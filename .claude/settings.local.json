@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx vite *)"
+      "Bash(npx vite *)",
+      "Bash(ls -lt ~/Downloads ~/Desktop 2>/dev/null | head -20; find /var/folders -name \"*.png\" -newer /tmp -mmin -60 2>/dev/null | head -5)",
+      "Bash(mkdir -p /Users/danispreldzic/Desktop/Danis/PROJECTS/fuca/public && cp \"/Users/danispreldzic/Desktop/fuca_logo.png\" /Users/danispreldzic/Desktop/Danis/PROJECTS/fuca/public/fuca_logo.png && ls -la /Users/danispreldzic/Desktop/Danis/PROJECTS/fuca/public/)"
     ]
   }
 }

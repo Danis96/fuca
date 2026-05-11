@@ -73,13 +73,13 @@ export function LoginScreen() {
         <div className="panel p-8 glow-ring">
           <div className="text-center mb-6">
             <motion.div
-              className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-4 bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-lg shadow-emerald-500/40"
+              className="inline-flex items-center justify-center w-24 h-24 rounded-2xl mb-4 overflow-hidden shadow-lg shadow-black/40 ring-1 ring-white/10"
               initial={{ rotate: -180, scale: 0 }}
               animate={{ rotate: 0, scale: 1 }}
               transition={{ delay: 0.15, type: 'spring', stiffness: 180, damping: 14 }}
               whileHover={{ rotate: [0, -8, 8, 0], transition: { duration: 0.5 } }}
             >
-              <Shield className="w-8 h-8 text-emerald-950" />
+              <img src="/fuca_logo.png" alt="Fuca" className="w-full h-full object-cover" />
             </motion.div>
             <motion.h1
               className="text-4xl font-bold mb-2 tracking-tight bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent"
