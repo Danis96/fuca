@@ -1,0 +1,9 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[[redirects]]
+  from = "/api/imagekit-auth"
+  to = "/.netlify/functions/imagekit-auth"
+  status = 200
