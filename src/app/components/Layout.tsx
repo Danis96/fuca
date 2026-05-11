@@ -39,11 +39,11 @@ export function Layout({ children, currentPage, onNavigate }: LayoutProps) {
                 transition={{ duration: 0.4 }}
               >
                 <motion.div
-                  className="w-10 h-10 rounded-xl flex items-center justify-center bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-lg shadow-emerald-500/30"
+                  className="w-10 h-10 rounded-xl overflow-hidden shadow-lg shadow-black/40 ring-1 ring-white/10"
                   whileHover={{ rotate: [0, -10, 10, 0], scale: 1.08 }}
                   transition={{ duration: 0.5 }}
                 >
-                  <Trophy className="w-5 h-5 text-emerald-950" />
+                  <img src="/fuca_logo.png" alt="Fuca" className="w-full h-full object-cover" />
                 </motion.div>
                 <div>
                   <h1 className="text-lg font-bold tracking-tight">Fuca <span className="text-emerald-400">·</span> Sunday League</h1>
