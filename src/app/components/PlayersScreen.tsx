@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Player } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
-import { Plus, Edit, Trash2, User, Trophy, Target, TrendingUp } from 'lucide-react';
+import { uploadToImageKit } from '../../lib/imagekit';
+import { Plus, Edit, Trash2, User, Trophy, Target, TrendingUp, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface PlayersScreenProps {
@@ -190,6 +191,7 @@ interface PlayerFormData {
   nickname: string;
   position: string;
   status: 'active' | 'inactive';
+  avatar: string;
   totalGoals: number;
   totalAssists: number;
   matchesPlayed: number;
@@ -210,6 +212,7 @@ function PlayerModal({ player, onClose, onSave }: PlayerModalProps) {
     nickname: player?.nickname ?? '',
     position: player?.position ?? '',
     status: player?.status ?? 'active',
+    avatar: player?.avatar ?? '',
     totalGoals: player?.totalGoals ?? 0,
     totalAssists: player?.totalAssists ?? 0,
     matchesPlayed: player?.matchesPlayed ?? 0,
@@ -217,6 +220,30 @@ function PlayerModal({ player, onClose, onSave }: PlayerModalProps) {
     losses: player?.losses ?? 0,
     draws: player?.draws ?? 0,
   });
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleAvatarChange = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image must be under 5MB');
+      return;
+    }
+    setUploading(true);
+    try {
+      const url = await uploadToImageKit(file, 'avatars');
+      setFormData((prev) => ({ ...prev, avatar: url }));
+      toast.success('Image uploaded');
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to upload image');
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -231,6 +258,51 @@ function PlayerModal({ player, onClose, onSave }: PlayerModalProps) {
         </h2>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Photo</label>
+            <div className="flex items-center gap-4">
+              <div className="w-20 h-20 rounded-full bg-green-100 overflow-hidden flex items-center justify-center shrink-0">
+                {formData.avatar ? (
+                  <img src={formData.avatar} alt="avatar" className="w-full h-full object-cover" />
+                ) : (
+                  <User className="w-8 h-8 text-green-600" />
+                )}
+              </div>
+              <div className="flex flex-col gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleAvatarChange(file);
+                    e.target.value = '';
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="inline-flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 transition disabled:opacity-60"
+                >
+                  <Upload className="w-4 h-4" />
+                  {uploading ? 'Uploading…' : formData.avatar ? 'Replace' : 'Upload'}
+                </button>
+                {formData.avatar && (
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, avatar: '' })}
+                    className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition"
+                  >
+                    <X className="w-4 h-4" />
+                    Remove
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Name *</label>
             <input

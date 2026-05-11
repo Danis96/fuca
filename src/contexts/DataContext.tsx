@@ -152,7 +152,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   };
 
   const deletePlayer: DataContextType['deletePlayer'] = async (id) => {
-    await deleteDoc(doc(db, 'players', id));
+    const batch = writeBatch(db);
+    batch.delete(doc(db, 'players', id));
+    batch.delete(doc(db, 'users', id));
+    await batch.commit();
   };
 
   const addMatch: DataContextType['addMatch'] = async (data) => {
@@ -192,11 +195,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     for (const g of newGoals) {
       const ref = doc(collection(db, 'goals'));
-      batch.set(ref, {
-        ...g,
+      const payload: Record<string, unknown> = {
+        scorerId: g.scorerId,
+        team: g.team,
         matchId,
         createdAt: serverTimestamp(),
-      });
+      };
+      if (g.assistId !== undefined) payload.assistId = g.assistId;
+      if (g.minute !== undefined) payload.minute = g.minute;
+      batch.set(ref, payload);
     }
 
     const allPlayerIds = [...match.teamA.playerIds, ...match.teamB.playerIds];
