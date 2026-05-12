@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Match, Goal } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
@@ -15,12 +15,26 @@ import {
   Clock,
   X,
   ChevronLeft,
+  ChevronRight,
   ArrowRightLeft,
   ClipboardCheck,
   Shuffle,
   Sparkles,
 } from 'lucide-react';
-import { format } from 'date-fns';
+import {
+  format,
+  startOfMonth,
+  endOfMonth,
+  startOfWeek,
+  endOfWeek,
+  addDays,
+  addMonths,
+  subMonths,
+  isSameDay,
+  isSameMonth,
+  isBefore,
+  startOfDay,
+} from 'date-fns';
 import { toast } from 'sonner';
 
 export function MatchesScreen() {
@@ -185,43 +199,46 @@ interface MatchCardProps {
 function MatchCard({ match, onClick, isAdmin, onDelete, delay = 0 }: MatchCardProps) {
   const isCompleted = match.status === 'completed';
   const accent = isCompleted ? '#10b981' : '#3b82f6';
+  const aScore = match.teamA.score ?? 0;
+  const bScore = match.teamB.score ?? 0;
+  const winner: 'a' | 'b' | 'draw' | null = isCompleted
+    ? aScore > bScore ? 'a' : bScore > aScore ? 'b' : 'draw'
+    : null;
 
   return (
     <motion.div
       onClick={onClick}
-      className="match-card"
+      className="match-card v2"
       style={{ ['--card-accent' as any]: accent }}
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, delay }}
     >
-      <div className="flex items-start justify-between gap-4 mb-5">
-        <div className="flex items-center gap-3 min-w-0">
-          <div
-            className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
-            style={{
-              background: `color-mix(in oklab, ${accent} 14%, transparent)`,
-              border: `1px solid color-mix(in oklab, ${accent} 30%, transparent)`,
-              color: accent,
-            }}
-          >
-            {isCompleted ? <CheckCircle className="w-5 h-5" /> : <Calendar className="w-5 h-5" />}
-          </div>
-          <div className="min-w-0">
-            <p className="font-bold truncate">{format(match.date, 'EEEE, MMM dd, yyyy')}</p>
-            <div className="flex items-center gap-3 text-sm text-gray-500 mt-0.5">
-              <span className="inline-flex items-center gap-1">
-                <Clock className="w-3.5 h-3.5" />
-                {match.time}
-              </span>
-              <span className="inline-flex items-center gap-1 truncate">
-                <MapPin className="w-3.5 h-3.5 shrink-0" />
-                <span className="truncate">{match.location}</span>
-              </span>
-            </div>
+      <div className="match-card-glow" aria-hidden />
+
+      <div className="match-card-header">
+        <div className="date-tile">
+          <span className="date-tile-month">{format(match.date, 'MMM')}</span>
+          <span className="date-tile-day">{format(match.date, 'dd')}</span>
+          <span className="date-tile-weekday">{format(match.date, 'EEE')}</span>
+        </div>
+
+        <div className="match-card-meta">
+          <p className="match-card-title">{format(match.date, 'EEEE')}</p>
+          <p className="match-card-subtitle">{format(match.date, 'MMMM dd, yyyy')}</p>
+          <div className="match-card-meta-row">
+            <span className="meta-chip">
+              <Clock className="w-3.5 h-3.5" />
+              {match.time}
+            </span>
+            <span className="meta-chip">
+              <MapPin className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">{match.location}</span>
+            </span>
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+
+        <div className="match-card-actions">
           <span className={`match-status-pill ${isCompleted ? 'completed' : 'scheduled'}`}>
             <span className="dot" />
             {match.status}
@@ -241,25 +258,40 @@ function MatchCard({ match, onClick, isAdmin, onDelete, delay = 0 }: MatchCardPr
         </div>
       </div>
 
-      <div className="scoreboard">
-        <div className="team-block team-a">
-          <span className="team-label">Team A</span>
-          {isCompleted && <span className="team-score">{match.teamA.score ?? 0}</span>}
-          <span className="team-meta">
-            <Users className="w-3.5 h-3.5" />
-            {match.teamA.playerIds.length}
-          </span>
+      <div className="scoreboard v2">
+        <div className={`team-block team-a ${winner === 'a' ? 'is-winner' : ''} ${winner && winner !== 'a' && winner !== 'draw' ? 'is-loser' : ''}`}>
+          <span className="team-stripe" aria-hidden />
+          <div className="team-block-inner">
+            <span className="team-label">Team A</span>
+            <span className="team-meta">
+              <Users className="w-3.5 h-3.5" />
+              {match.teamA.playerIds.length} {match.teamA.playerIds.length === 1 ? 'player' : 'players'}
+            </span>
+          </div>
+          {isCompleted && <span className="team-score">{aScore}</span>}
         </div>
 
-        <div className="vs-divider">{isCompleted ? '–' : 'VS'}</div>
+        <div className={`vs-divider ${isCompleted ? 'is-final' : ''}`}>
+          {isCompleted ? (
+            <span className="vs-final">FT</span>
+          ) : (
+            <>
+              <span className="vs-text">VS</span>
+              <span className="vs-pulse" aria-hidden />
+            </>
+          )}
+        </div>
 
-        <div className="team-block team-b">
-          <span className="team-label">Team B</span>
-          {isCompleted && <span className="team-score">{match.teamB.score ?? 0}</span>}
-          <span className="team-meta">
-            <Users className="w-3.5 h-3.5" />
-            {match.teamB.playerIds.length}
-          </span>
+        <div className={`team-block team-b ${winner === 'b' ? 'is-winner' : ''} ${winner && winner !== 'b' && winner !== 'draw' ? 'is-loser' : ''}`}>
+          {isCompleted && <span className="team-score">{bScore}</span>}
+          <div className="team-block-inner align-right">
+            <span className="team-label">Team B</span>
+            <span className="team-meta">
+              <Users className="w-3.5 h-3.5" />
+              {match.teamB.playerIds.length} {match.teamB.playerIds.length === 1 ? 'player' : 'players'}
+            </span>
+          </div>
+          <span className="team-stripe" aria-hidden />
         </div>
       </div>
     </motion.div>
@@ -325,15 +357,26 @@ interface CreateMatchModalProps {
 }
 
 function CreateMatchModal({ onClose, onSave }: CreateMatchModalProps) {
-  const [formData, setFormData] = useState({ date: '', time: '', location: '', notes: '' });
+  const [date, setDate] = useState<Date | null>(null);
+  const [time, setTime] = useState('');
+  const [location, setLocation] = useState('');
+  const [notes, setNotes] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!date) {
+      toast.error('Pick a date');
+      return;
+    }
+    if (!time) {
+      toast.error('Pick a time');
+      return;
+    }
     onSave({
-      date: new Date(formData.date),
-      time: formData.time,
-      location: formData.location,
-      notes: formData.notes,
+      date,
+      time,
+      location,
+      notes,
       status: 'scheduled',
       teamA: { name: 'Team A', playerIds: [] },
       teamB: { name: 'Team B', playerIds: [] },
@@ -345,6 +388,7 @@ function CreateMatchModal({ onClose, onSave }: CreateMatchModalProps) {
       title="Schedule New Match"
       subtitle="Pick a date, time and venue."
       onClose={onClose}
+      maxWidth="38rem"
       footer={
         <>
           <button type="button" onClick={onClose} className="btn-secondary flex-1">
@@ -361,31 +405,19 @@ function CreateMatchModal({ onClose, onSave }: CreateMatchModalProps) {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="field-label">Date</label>
-            <input
-              type="date"
-              value={formData.date}
-              onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-              className="field-input"
-              required
-            />
+            <DatePickerField value={date} onChange={setDate} />
           </div>
           <div>
             <label className="field-label">Time</label>
-            <input
-              type="time"
-              value={formData.time}
-              onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-              className="field-input"
-              required
-            />
+            <TimePickerField value={time} onChange={setTime} />
           </div>
         </div>
         <div>
           <label className="field-label">Location</label>
           <input
             type="text"
-            value={formData.location}
-            onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
             className="field-input"
             required
             placeholder="e.g. Central Park Field"
@@ -394,8 +426,8 @@ function CreateMatchModal({ onClose, onSave }: CreateMatchModalProps) {
         <div>
           <label className="field-label">Notes</label>
           <textarea
-            value={formData.notes}
-            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
             className="field-input resize-none"
             rows={3}
             placeholder="Anything else worth noting…"
@@ -403,6 +435,287 @@ function CreateMatchModal({ onClose, onSave }: CreateMatchModalProps) {
         </div>
       </form>
     </ModalShell>
+  );
+}
+
+/* ============================================================
+ * Date Picker
+ * ============================================================ */
+
+function useOutsideClick(ref: React.RefObject<HTMLElement | null>, onClose: () => void, active: boolean) {
+  useEffect(() => {
+    if (!active) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('mousedown', handler);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [ref, onClose, active]);
+}
+
+function DatePickerField({ value, onChange }: { value: Date | null; onChange: (d: Date) => void }) {
+  const [open, setOpen] = useState(false);
+  const [viewMonth, setViewMonth] = useState<Date>(value ?? new Date());
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useOutsideClick(rootRef, () => setOpen(false), open);
+
+  useEffect(() => {
+    if (open) setViewMonth(value ?? new Date());
+  }, [open, value]);
+
+  const days = useMemo(() => {
+    const monthStart = startOfMonth(viewMonth);
+    const monthEnd = endOfMonth(viewMonth);
+    const gridStart = startOfWeek(monthStart, { weekStartsOn: 1 });
+    const gridEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
+    const out: Date[] = [];
+    let d = gridStart;
+    while (!isBefore(gridEnd, d)) {
+      out.push(d);
+      d = addDays(d, 1);
+    }
+    return out;
+  }, [viewMonth]);
+
+  const today = startOfDay(new Date());
+  const weekdays = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+
+  return (
+    <div className="picker-root" ref={rootRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`picker-trigger ${open ? 'is-open' : ''} ${value ? 'has-value' : ''}`}
+      >
+        <Calendar className="w-4 h-4 picker-trigger-icon" />
+        <span className="picker-trigger-value">
+          {value ? format(value, 'EEE, MMM dd, yyyy') : 'Select date'}
+        </span>
+        <ChevronRight className={`w-4 h-4 picker-trigger-caret ${open ? 'rotated' : ''}`} />
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            className="picker-popover"
+            initial={{ opacity: 0, y: -6, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.98 }}
+            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <div className="cal-header">
+              <button
+                type="button"
+                onClick={() => setViewMonth((m) => subMonths(m, 1))}
+                className="cal-nav"
+                aria-label="Previous month"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <div className="cal-title">
+                <span className="cal-month">{format(viewMonth, 'MMMM')}</span>
+                <span className="cal-year">{format(viewMonth, 'yyyy')}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewMonth((m) => addMonths(m, 1))}
+                className="cal-nav"
+                aria-label="Next month"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="cal-weekdays">
+              {weekdays.map((w, i) => (
+                <span key={i}>{w}</span>
+              ))}
+            </div>
+            <div className="cal-grid">
+              {days.map((d) => {
+                const inMonth = isSameMonth(d, viewMonth);
+                const isSelected = value && isSameDay(d, value);
+                const isToday = isSameDay(d, today);
+                return (
+                  <button
+                    type="button"
+                    key={d.toISOString()}
+                    onClick={() => {
+                      onChange(d);
+                      setOpen(false);
+                    }}
+                    className={[
+                      'cal-cell',
+                      inMonth ? '' : 'is-muted',
+                      isSelected ? 'is-selected' : '',
+                      isToday ? 'is-today' : '',
+                    ].join(' ')}
+                  >
+                    {format(d, 'd')}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="cal-footer">
+              <button
+                type="button"
+                className="cal-quick"
+                onClick={() => {
+                  onChange(today);
+                  setOpen(false);
+                }}
+              >
+                Today
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/* ============================================================
+ * Time Picker
+ * ============================================================ */
+
+function TimePickerField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  useOutsideClick(rootRef, () => setOpen(false), open);
+
+  const [h, m] = value ? value.split(':') : ['', ''];
+  const hour = h ? parseInt(h, 10) : null;
+  const minute = m ? parseInt(m, 10) : null;
+
+  const hours = Array.from({ length: 24 }, (_, i) => i);
+  const minutes = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
+
+  const hourListRef = useRef<HTMLDivElement>(null);
+  const minListRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const scrollTo = (container: HTMLDivElement | null, sel: string) => {
+      if (!container) return;
+      const el = container.querySelector<HTMLElement>(sel);
+      if (el) container.scrollTop = el.offsetTop - container.clientHeight / 2 + el.clientHeight / 2;
+    };
+    requestAnimationFrame(() => {
+      scrollTo(hourListRef.current, '.time-cell.is-selected');
+      scrollTo(minListRef.current, '.time-cell.is-selected');
+    });
+  }, [open]);
+
+  const setH = (nh: number) => {
+    const nm = minute ?? 0;
+    onChange(`${String(nh).padStart(2, '0')}:${String(nm).padStart(2, '0')}`);
+  };
+  const setM = (nm: number) => {
+    const nh = hour ?? 12;
+    onChange(`${String(nh).padStart(2, '0')}:${String(nm).padStart(2, '0')}`);
+  };
+
+  const display = value
+    ? (() => {
+        const d = new Date();
+        d.setHours(parseInt(h, 10), parseInt(m, 10), 0, 0);
+        return format(d, 'HH:mm');
+      })()
+    : 'Select time';
+
+  return (
+    <div className="picker-root" ref={rootRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`picker-trigger ${open ? 'is-open' : ''} ${value ? 'has-value' : ''}`}
+      >
+        <Clock className="w-4 h-4 picker-trigger-icon" />
+        <span className="picker-trigger-value">{display}</span>
+        <ChevronRight className={`w-4 h-4 picker-trigger-caret ${open ? 'rotated' : ''}`} />
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            className="picker-popover time-popover"
+            initial={{ opacity: 0, y: -6, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.98 }}
+            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <div className="time-header">
+              <span className="time-display">
+                <span className={`time-num ${hour !== null ? 'is-set' : ''}`}>
+                  {hour !== null ? String(hour).padStart(2, '0') : '--'}
+                </span>
+                <span className="time-colon">:</span>
+                <span className={`time-num ${minute !== null ? 'is-set' : ''}`}>
+                  {minute !== null ? String(minute).padStart(2, '0') : '--'}
+                </span>
+              </span>
+            </div>
+            <div className="time-columns">
+              <div className="time-col">
+                <div className="time-col-label">Hour</div>
+                <div className="time-list" ref={hourListRef}>
+                  {hours.map((hh) => (
+                    <button
+                      key={hh}
+                      type="button"
+                      onClick={() => setH(hh)}
+                      className={`time-cell ${hour === hh ? 'is-selected' : ''}`}
+                    >
+                      {String(hh).padStart(2, '0')}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="time-col">
+                <div className="time-col-label">Minute</div>
+                <div className="time-list" ref={minListRef}>
+                  {minutes.map((mm) => (
+                    <button
+                      key={mm}
+                      type="button"
+                      onClick={() => setM(mm)}
+                      className={`time-cell ${minute === mm ? 'is-selected' : ''}`}
+                    >
+                      {String(mm).padStart(2, '0')}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="time-presets">
+              {['10:00', '12:00', '15:00', '17:30', '19:00', '20:00'].map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  className={`time-preset ${value === t ? 'is-selected' : ''}`}
+                  onClick={() => {
+                    onChange(t);
+                  }}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+            <div className="time-footer">
+              <button type="button" className="cal-quick" onClick={() => setOpen(false)}>
+                Done
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
 
