@@ -3,6 +3,7 @@ import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { Calendar, Trophy, Target, Users, TrendingUp, Award } from 'lucide-react';
 import { format } from 'date-fns';
+import { getTotalPoints } from '../../lib/playerStats';
 
 export function DashboardHome() {
   const { players, matches } = useData();
@@ -165,11 +166,7 @@ export function DashboardHome() {
           </h2>
           <div className="space-y-2">
             {[...players]
-              .sort(
-                (a, b) =>
-                  (b.totalGoals + b.totalAssists + b.matchesPlayed) -
-                  (a.totalGoals + a.totalAssists + a.matchesPlayed),
-              )
+              .sort((a, b) => getTotalPoints(b) - getTotalPoints(a))
               .slice(0, 5)
               .map((player, index) => (
                 <motion.div
@@ -194,7 +191,7 @@ export function DashboardHome() {
                   </div>
                   <div className="text-right">
                     <p className="font-bold text-lg text-emerald-400">
-                      {player.totalGoals + player.totalAssists + player.matchesPlayed}
+                      {getTotalPoints(player)}
                     </p>
                     <p className="text-xs text-gray-500">pts</p>
                   </div>
