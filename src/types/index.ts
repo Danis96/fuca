@@ -7,6 +7,7 @@ export interface Player {
   status: 'active' | 'inactive';
   totalGoals: number;
   totalAssists: number;
+  totalSaves: number;
   matchesPlayed: number;
   wins: number;
   losses: number;
@@ -47,5 +48,11 @@ export interface MatchResult {
   teamAScore: number;
   teamBScore: number;
   goals: Goal[];
+  saves?: SaveEntry[];
   mvpId?: string;
+}
+
+export interface SaveEntry {
+  playerId: string;
+  saves: number;
 }

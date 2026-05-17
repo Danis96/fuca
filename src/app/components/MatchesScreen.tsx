@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Match, Goal } from '../../types';
+import { Match, Goal, SaveEntry } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
 import {
@@ -1167,16 +1167,20 @@ interface RecordResultModalProps {
 }
 
 type GoalDraft = Omit<Goal, 'id' | 'matchId' | 'createdAt'>;
+type SaveDraft = SaveEntry;
 
 function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
   const { players, recordResult } = useData();
   const [teamAScore, setTeamAScore] = useState<number>(0);
   const [teamBScore, setTeamBScore] = useState<number>(0);
   const [goals, setGoals] = useState<GoalDraft[]>([]);
+  const [saves, setSaves] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState(false);
 
   const teamAPlayers = players.filter((p) => match.teamA.playerIds.includes(p.id));
   const teamBPlayers = players.filter((p) => match.teamB.playerIds.includes(p.id));
+  const teamAGoalkeepers = teamAPlayers.filter((p) => p.position === 'Goalkeeper');
+  const teamBGoalkeepers = teamBPlayers.filter((p) => p.position === 'Goalkeeper');
 
   const addGoalRow = (team: 'A' | 'B') => {
     setGoals([...goals, { scorerId: '', assistId: undefined, team, minute: undefined }]);
@@ -1185,15 +1189,23 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
     setGoals(goals.map((g, i) => (i === index ? { ...g, ...patch } : g)));
   };
   const removeGoal = (index: number) => setGoals(goals.filter((_, i) => i !== index));
+  const updateSaves = (playerId: string, value: number) => {
+    setSaves((current) => ({ ...current, [playerId]: value }));
+  };
 
   const handleSave = async () => {
     if (goals.some((g) => !g.scorerId)) {
       toast.error('All goals need a scorer');
       return;
     }
+
+    const saveEntries: SaveDraft[] = Object.entries(saves)
+      .map(([playerId, total]) => ({ playerId, saves: total }))
+      .filter((entry) => entry.saves > 0);
+
     setSaving(true);
     try {
-      await recordResult(match.id, teamAScore, teamBScore, goals);
+      await recordResult(match.id, teamAScore, teamBScore, goals, saveEntries);
       toast.success('Result recorded');
       onClose();
     } catch (err) {
@@ -1254,7 +1266,7 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
   return (
     <ModalShell
       title="Record Result"
-      subtitle="Set final score and goalscorers."
+      subtitle="Set final score, goalscorers, and goalkeeper saves."
       onClose={onClose}
       maxWidth="48rem"
       footer={
@@ -1320,6 +1332,47 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
           {goals.length === 0 && (
             <p className="text-sm text-gray-500 italic text-center py-6">
               No goals added — a scoreless result will be recorded.
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-8">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-bold">Goalkeeper Saves</h3>
+          <p className="text-sm text-gray-500">1 point per 4 saves</p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {[...teamAGoalkeepers, ...teamBGoalkeepers].map((player) => {
+            const team = match.teamA.playerIds.includes(player.id) ? 'A' : 'B';
+            return (
+              <div
+                key={player.id}
+                className="p-4 rounded-xl border border-white/5 bg-white/[0.02] space-y-2"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium">{player.name}</p>
+                    <p className="text-sm text-gray-500">Team {team} Goalkeeper</p>
+                  </div>
+                  <span className={`btn-pill ${team === 'A' ? 'team-a' : 'team-b'} pointer-events-none`}>
+                    Team {team}
+                  </span>
+                </div>
+                <input
+                  type="number"
+                  min={0}
+                  value={saves[player.id] ?? 0}
+                  onChange={(e) => updateSaves(player.id, parseInt(e.target.value || '0', 10))}
+                  className="field-input"
+                  placeholder="0"
+                />
+              </div>
+            );
+          })}
+          {teamAGoalkeepers.length === 0 && teamBGoalkeepers.length === 0 && (
+            <p className="text-sm text-gray-500 italic text-center py-6 col-span-full">
+              No goalkeepers assigned to this match yet.
             </p>
           )}
         </div>

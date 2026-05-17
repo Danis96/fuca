@@ -13,7 +13,7 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { Player, Match, Goal } from '../types';
+import { Player, Match, Goal, SaveEntry } from '../types';
 
 interface DataContextType {
   players: Player[];
@@ -33,7 +33,8 @@ interface DataContextType {
     matchId: string,
     teamAScore: number,
     teamBScore: number,
-    goals: Array<Omit<Goal, 'id' | 'matchId' | 'createdAt'>>
+    goals: Array<Omit<Goal, 'id' | 'matchId' | 'createdAt'>>,
+    saves: SaveEntry[]
   ) => Promise<void>;
 }
 
@@ -74,6 +75,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           status: data.status ?? 'active',
           totalGoals: data.totalGoals ?? 0,
           totalAssists: data.totalAssists ?? 0,
+          totalSaves: data.totalSaves ?? 0,
           matchesPlayed: data.matchesPlayed ?? 0,
           wins: data.wins ?? 0,
           losses: data.losses ?? 0,
@@ -180,7 +182,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     matchId,
     teamAScore,
     teamBScore,
-    newGoals
+    newGoals,
+    saves
   ) => {
     const match = matches.find((m) => m.id === matchId);
     if (!match) throw new Error('Match not found');
@@ -212,9 +215,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     const goalCount: Record<string, number> = {};
     const assistCount: Record<string, number> = {};
+    const saveCount: Record<string, number> = {};
     for (const g of newGoals) {
       if (g.scorerId) goalCount[g.scorerId] = (goalCount[g.scorerId] ?? 0) + 1;
       if (g.assistId) assistCount[g.assistId] = (assistCount[g.assistId] ?? 0) + 1;
+    }
+    for (const entry of saves) {
+      if (!entry.playerId || entry.saves <= 0) continue;
+      saveCount[entry.playerId] = (saveCount[entry.playerId] ?? 0) + entry.saves;
     }
 
     for (const pid of allPlayerIds) {
@@ -231,6 +239,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         draws: (player.draws ?? 0) + (result === 'D' ? 1 : 0),
         totalGoals: (player.totalGoals ?? 0) + (goalCount[pid] ?? 0),
         totalAssists: (player.totalAssists ?? 0) + (assistCount[pid] ?? 0),
+        totalSaves: (player.totalSaves ?? 0) + (saveCount[pid] ?? 0),
       });
     }
 

@@ -68,6 +68,7 @@ async function ensureUserDoc(user: User): Promise<UserProfile> {
           uid: user.uid,
           totalGoals: 0,
           totalAssists: 0,
+          totalSaves: 0,
           matchesPlayed: 0,
           wins: 0,
           losses: 0,

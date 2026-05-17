@@ -1,6 +1,7 @@
 import { useData } from '../../contexts/DataContext';
 import { ArrowLeft, Trophy, Target, TrendingUp, Award, Calendar, User } from 'lucide-react';
 import { format } from 'date-fns';
+import { getSavePoints, getTotalPoints } from '../../lib/playerStats';
 
 interface PlayerProfileScreenProps {
   playerId: string;
@@ -39,7 +40,8 @@ export function PlayerProfileScreen({ playerId, onBack }: PlayerProfileScreenPro
   const stats = [
     { label: 'Total Goals', value: player.totalGoals, icon: Trophy, color: 'bg-yellow-500' },
     { label: 'Total Assists', value: player.totalAssists, icon: Target, color: 'bg-blue-500' },
-    { label: 'Matches Played', value: player.matchesPlayed, icon: Award, color: 'bg-green-500' },
+    { label: 'Total Saves', value: player.totalSaves, icon: TrendingUp, color: 'bg-cyan-500' },
+    { label: 'Total Points', value: getTotalPoints(player), icon: Award, color: 'bg-green-500' },
     { label: 'G+A per Match', value: goalContributionPerMatch, icon: TrendingUp, color: 'bg-purple-500' },
   ];
 
@@ -135,9 +137,9 @@ export function PlayerProfileScreen({ playerId, onBack }: PlayerProfileScreenPro
           <h2 className="text-xl font-bold text-gray-900 mb-4">Season Stats</h2>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-gray-700">Total Contributions</span>
+              <span className="text-gray-700">Total Points</span>
               <span className="text-2xl font-bold text-gray-900">
-                {player.totalGoals + player.totalAssists}
+                {getTotalPoints(player)}
               </span>
             </div>
             <div className="flex items-center justify-between">
@@ -147,6 +149,14 @@ export function PlayerProfileScreen({ playerId, onBack }: PlayerProfileScreenPro
             <div className="flex items-center justify-between">
               <span className="text-gray-700">Assists</span>
               <span className="text-2xl font-bold text-blue-600">{player.totalAssists}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-gray-700">Saves</span>
+              <span className="text-2xl font-bold text-cyan-600">{player.totalSaves}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-gray-700">Save Points</span>
+              <span className="text-2xl font-bold text-cyan-600">{getSavePoints(player.totalSaves)}</span>
             </div>
             <div className="pt-4 border-t border-gray-200">
               <div className="flex items-center justify-between">

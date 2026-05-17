@@ -194,6 +194,7 @@ interface PlayerFormData {
   avatar: string;
   totalGoals: number;
   totalAssists: number;
+  totalSaves: number;
   matchesPlayed: number;
   wins: number;
   losses: number;
@@ -215,6 +216,7 @@ function PlayerModal({ player, onClose, onSave }: PlayerModalProps) {
     avatar: player?.avatar ?? '',
     totalGoals: player?.totalGoals ?? 0,
     totalAssists: player?.totalAssists ?? 0,
+    totalSaves: player?.totalSaves ?? 0,
     matchesPlayed: player?.matchesPlayed ?? 0,
     wins: player?.wins ?? 0,
     losses: player?.losses ?? 0,
@@ -357,6 +359,7 @@ function PlayerModal({ player, onClose, onSave }: PlayerModalProps) {
             <div className="grid grid-cols-2 gap-3">
               <NumField label="Goals" value={formData.totalGoals} onChange={(v) => setFormData({ ...formData, totalGoals: v })} />
               <NumField label="Assists" value={formData.totalAssists} onChange={(v) => setFormData({ ...formData, totalAssists: v })} />
+              <NumField label="Saves" value={formData.totalSaves} onChange={(v) => setFormData({ ...formData, totalSaves: v })} />
               <NumField label="Matches" value={formData.matchesPlayed} onChange={(v) => setFormData({ ...formData, matchesPlayed: v })} />
               <NumField label="Wins" value={formData.wins} onChange={(v) => setFormData({ ...formData, wins: v })} />
               <NumField label="Draws" value={formData.draws} onChange={(v) => setFormData({ ...formData, draws: v })} />
