@@ -30,6 +30,25 @@ function escapeHtml(value: string) {
     .replaceAll("'", '&#39;');
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function runInBatches<T>(tasks: Array<() => Promise<T>>, batchSize: number, delayMs: number) {
+  const results: T[] = [];
+
+  for (let start = 0; start < tasks.length; start += batchSize) {
+    const batch = tasks.slice(start, start + batchSize);
+    results.push(...(await Promise.all(batch.map((task) => task()))));
+
+    if (start + batchSize < tasks.length) {
+      await sleep(delayMs);
+    }
+  }
+
+  return results;
+}
+
 export const handler = async (event: { httpMethod?: string; body?: string | null }) => {
   if (event.httpMethod !== 'POST') {
     return json(405, { error: 'Method not allowed' });
@@ -71,47 +90,48 @@ export const handler = async (event: { httpMethod?: string; body?: string | null
     const safeLocation = escapeHtml(payload.location);
     const safeNotes = payload.notes?.trim() ? escapeHtml(payload.notes.trim()) : '';
 
-    return fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${resendApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: fromEmail,
-        to: recipient.email,
-        subject: `Your team for the upcoming match: ${recipient.teamName}`,
-        text: [
-          `Hi ${recipient.name},`,
-          '',
-          `You have been assigned to ${recipient.teamName}.`,
-          `Game date: ${payload.date}`,
-          `Time: ${payload.time}`,
-          `Location: ${payload.location}`,
-          safeNotes ? `Notes: ${payload.notes?.trim()}` : '',
-          '',
-          'See you at the match.',
-        ]
-          .filter(Boolean)
-          .join('\n'),
-        html: `
-          <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827;">
-            <p>Hi ${safeName},</p>
-            <p>You have been assigned to <strong>${safeTeam}</strong>.</p>
-            <p>
-              <strong>Game date:</strong> ${safeDate}<br />
-              <strong>Time:</strong> ${safeTime}<br />
-              <strong>Location:</strong> ${safeLocation}
-            </p>
-            ${safeNotes ? `<p><strong>Notes:</strong> ${safeNotes}</p>` : ''}
-            <p>See you at the match.</p>
-          </div>
-        `,
-      }),
-    });
+    return () =>
+      fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${resendApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: fromEmail,
+          to: recipient.email,
+          subject: `Your team for the upcoming match: ${recipient.teamName}`,
+          text: [
+            `Hi ${recipient.name},`,
+            '',
+            `You have been assigned to ${recipient.teamName}.`,
+            `Game date: ${payload.date}`,
+            `Time: ${payload.time}`,
+            `Location: ${payload.location}`,
+            safeNotes ? `Notes: ${payload.notes?.trim()}` : '',
+            '',
+            'See you at the match.',
+          ]
+            .filter(Boolean)
+            .join('\n'),
+          html: `
+            <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827;">
+              <p>Hi ${safeName},</p>
+              <p>You have been assigned to <strong>${safeTeam}</strong>.</p>
+              <p>
+                <strong>Game date:</strong> ${safeDate}<br />
+                <strong>Time:</strong> ${safeTime}<br />
+                <strong>Location:</strong> ${safeLocation}
+              </p>
+              ${safeNotes ? `<p><strong>Notes:</strong> ${safeNotes}</p>` : ''}
+              <p>See you at the match.</p>
+            </div>
+          `,
+        }),
+      });
   });
 
-  const responses = await Promise.all(requests);
+  const responses = await runInBatches(requests, 4, 1000);
   const failed = responses.filter((response) => !response.ok);
 
   if (failed.length > 0) {
