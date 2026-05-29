@@ -1,7 +1,8 @@
 import { useData } from '../../contexts/DataContext';
-import { ArrowLeft, Trophy, Target, TrendingUp, Award, Calendar, User } from 'lucide-react';
+import { ArrowLeft, Trophy, Target, TrendingUp, Award, Calendar, User, Flame, Medal } from 'lucide-react';
 import { format } from 'date-fns';
 import { getSavePoints, getTotalPoints } from '../../lib/playerStats';
+import { getPlayerCurrentStreak, getPlayerMvpCount, getPlayerRecentForm } from '../../lib/storyStats';
 
 interface PlayerProfileScreenProps {
   playerId: string;
@@ -31,6 +32,9 @@ export function PlayerProfileScreen({ playerId, onBack }: PlayerProfileScreenPro
       m.status === 'completed' &&
       (m.teamA.playerIds.includes(playerId) || m.teamB.playerIds.includes(playerId))
   );
+  const recentForm = getPlayerRecentForm(matches, playerId, 5);
+  const streak = getPlayerCurrentStreak(matches, playerId);
+  const mvpCount = getPlayerMvpCount(matches, playerId);
 
   const goalContributionPerMatch =
     player.matchesPlayed > 0
@@ -162,6 +166,69 @@ export function PlayerProfileScreen({ playerId, onBack }: PlayerProfileScreenPro
               <div className="flex items-center justify-between">
                 <span className="text-gray-700">Contribution/Match</span>
                 <span className="text-2xl font-bold text-purple-600">{goalContributionPerMatch}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <div className="bg-white rounded-xl shadow-md p-6">
+          <h2 className="text-xl font-bold text-gray-900 mb-4">Current Form</h2>
+          <div className="flex items-center gap-2 mb-4">
+            {recentForm.length > 0 ? (
+              recentForm.map(({ match, result }) => (
+                <div
+                  key={match.id}
+                  className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${
+                    result === 'W'
+                      ? 'bg-green-100 text-green-700'
+                      : result === 'D'
+                      ? 'bg-gray-100 text-gray-700'
+                      : 'bg-red-100 text-red-700'
+                  }`}
+                  title={`${format(match.date, 'MMM dd')} · ${result}`}
+                >
+                  {result}
+                </div>
+              ))
+            ) : (
+              <p className="text-gray-500">No recent form yet</p>
+            )}
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-gray-700">Current Streak</span>
+            <span className="text-lg font-bold text-gray-900">
+              {streak.count > 0 ? `${streak.type}${streak.count}` : '—'}
+            </span>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-md p-6">
+          <h2 className="text-xl font-bold text-gray-900 mb-4">Story Stats</h2>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="inline-flex items-center gap-2 text-gray-700">
+                <Flame className="w-4 h-4 text-orange-500" />
+                Current Streak
+              </span>
+              <span className="text-2xl font-bold text-gray-900">
+                {streak.count > 0 ? streak.count : 0}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="inline-flex items-center gap-2 text-gray-700">
+                <Medal className="w-4 h-4 text-emerald-500" />
+                MVP Awards
+              </span>
+              <span className="text-2xl font-bold text-gray-900">{mvpCount}</span>
+            </div>
+            <div className="pt-4 border-t border-gray-200">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-700">Recent Form Line</span>
+                <span className="font-medium text-gray-900">
+                  {recentForm.map((entry) => entry.result).join(' ') || '—'}
+                </span>
               </div>
             </div>
           </div>

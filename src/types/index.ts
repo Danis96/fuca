@@ -1,6 +1,7 @@
 export interface Player {
   id: string;
   name: string;
+  email: string;
   nickname?: string;
   avatar?: string;
   position?: string;
@@ -24,6 +25,9 @@ export interface Match {
   status: 'scheduled' | 'completed' | 'cancelled';
   teamA: TeamAssignment;
   teamB: TeamAssignment;
+  rsvps?: MatchRsvp[];
+  saves?: SaveEntry[];
+  mvpId?: string;
   createdAt: Date;
 }
 
@@ -55,4 +59,22 @@ export interface MatchResult {
 export interface SaveEntry {
   playerId: string;
   saves: number;
+}
+
+export type MatchRsvpStatus = 'in' | 'maybe' | 'out';
+
+export interface MatchRsvp {
+  playerId: string;
+  status: MatchRsvpStatus;
+  respondedAt?: Date;
+}
+
+export interface PlayerStatsLine {
+  totalGoals: number;
+  totalAssists: number;
+  totalSaves: number;
+  matchesPlayed: number;
+  wins: number;
+  losses: number;
+  draws: number;
 }
