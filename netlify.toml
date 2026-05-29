@@ -12,3 +12,8 @@
   from = "/api/send-team-assignment"
   to = "/.netlify/functions/send-team-assignment"
   status = 200
+
+[[redirects]]
+  from = "/api/send-match-schedule"
+  to = "/.netlify/functions/send-match-schedule"
+  status = 200
