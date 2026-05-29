@@ -20,6 +20,8 @@ import {
   ClipboardCheck,
   Shuffle,
   Sparkles,
+  Shield,
+  Copy,
 } from 'lucide-react';
 import {
   format,
@@ -36,6 +38,8 @@ import {
   startOfDay,
 } from 'date-fns';
 import { toast } from 'sonner';
+import { formatMatchEmailDate, sendTeamAssignmentEmails } from '../../lib/teamNotifications';
+import { getSavePoints, getSuggestedMvpId } from '../../lib/playerStats';
 
 export function MatchesScreen() {
   const { isAdmin } = useAuth();
@@ -730,11 +734,33 @@ interface MatchDetailsModalProps {
 }
 
 function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) {
-  const { players } = useData();
+  const { players, goals } = useData();
   const [view, setView] = useState<'details' | 'teams' | 'result'>('details');
 
   const teamAPlayers = players.filter((p) => match.teamA.playerIds.includes(p.id));
   const teamBPlayers = players.filter((p) => match.teamB.playerIds.includes(p.id));
+  const matchGoals = goals
+    .filter((goal) => goal.matchId === match.id)
+    .sort((a, b) => (a.minute ?? 999) - (b.minute ?? 999));
+  const mvp = match.mvpId ? players.find((player) => player.id === match.mvpId) : null;
+  const rsvpCounts = {
+    in: match.rsvps?.filter((entry) => entry.status === 'in').length ?? 0,
+    maybe: match.rsvps?.filter((entry) => entry.status === 'maybe').length ?? 0,
+    out: match.rsvps?.filter((entry) => entry.status === 'out').length ?? 0,
+  };
+
+  const copyRsvpLink = async () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('match', match.id);
+    url.searchParams.set('rsvp', '1');
+    try {
+      await navigator.clipboard.writeText(url.toString());
+      toast.success('RSVP link copied');
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to copy RSVP link');
+    }
+  };
 
   if (view === 'teams') {
     return <TeamAssignmentModal match={match} onClose={onClose} onBack={() => setView('details')} />;
@@ -757,15 +783,17 @@ function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) 
           <button onClick={onClose} className="btn-secondary flex-1">
             Close
           </button>
-          {isAdmin && match.status === 'scheduled' && (
+          {isAdmin && (
             <>
-              <button onClick={() => setView('teams')} className="btn-secondary flex-1 inline-flex items-center justify-center gap-2">
-                <ArrowRightLeft className="w-4 h-4" />
-                Teams
-              </button>
+              {match.status === 'scheduled' && (
+                <button onClick={() => setView('teams')} className="btn-secondary flex-1 inline-flex items-center justify-center gap-2">
+                  <ArrowRightLeft className="w-4 h-4" />
+                  Teams
+                </button>
+              )}
               <button onClick={() => setView('result')} className="btn-primary flex-1 py-2.5 inline-flex items-center justify-center gap-2">
                 <ClipboardCheck className="w-4 h-4" />
-                Record Result
+                {isCompleted ? 'Edit Result' : 'Record Result'}
               </button>
             </>
           )}
@@ -786,6 +814,30 @@ function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) 
             </span>
           </div>
         </div>
+
+        {match.status === 'scheduled' && (
+          <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <h3 className="font-bold mb-1">Share RSVP Link</h3>
+                <p className="text-sm text-gray-500">
+                  Players can open the link, check in, and get added to the team selection pool.
+                </p>
+              </div>
+              {isAdmin && (
+                <button onClick={copyRsvpLink} className="btn-secondary inline-flex items-center gap-2">
+                  <Copy className="w-4 h-4" />
+                  Copy Link
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-3 gap-3 mt-4">
+              <RsvpCountPill label="In" value={rsvpCounts.in} accent="text-emerald-300" />
+              <RsvpCountPill label="Maybe" value={rsvpCounts.maybe} accent="text-amber-300" />
+              <RsvpCountPill label="Out" value={rsvpCounts.out} accent="text-rose-300" />
+            </div>
+          </div>
+        )}
 
         {/* scoreboard */}
         <div className="scoreboard">
@@ -819,11 +871,91 @@ function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) 
               </button>
             )}
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <SquadPanel title="Team A" variant="a" players={teamAPlayers} />
-            <SquadPanel title="Team B" variant="b" players={teamBPlayers} />
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <SquadPanel title="Team A" variant="a" players={teamAPlayers} />
+          <SquadPanel title="Team B" variant="b" players={teamBPlayers} />
         </div>
+        </div>
+
+        {isCompleted && (
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-bold">Match Events</h3>
+              <span className="text-sm text-gray-500">
+                {matchGoals.length} {matchGoals.length === 1 ? 'goal' : 'goals'}
+              </span>
+            </div>
+            <div className="space-y-2">
+              {mvp && (
+                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/20">
+                        <Award className="w-5 h-5 text-emerald-300" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-emerald-200">{mvp.name}</p>
+                        <p className="text-sm text-emerald-100/70">Suggested MVP</p>
+                      </div>
+                    </div>
+                    <span className="btn-pill team-a pointer-events-none">MVP</span>
+                  </div>
+                </div>
+              )}
+              {matchGoals.map((goal) => {
+                const scorer = players.find((player) => player.id === goal.scorerId);
+                const assister = goal.assistId
+                  ? players.find((player) => player.id === goal.assistId)
+                  : null;
+                return (
+                  <div
+                    key={goal.id}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3"
+                  >
+                    <div>
+                      <p className="font-medium">
+                        {scorer?.name ?? 'Unknown scorer'}
+                        {assister ? ` · Assist: ${assister.name}` : ''}
+                      </p>
+                      <p className="text-sm text-gray-500">Team {goal.team}</p>
+                    </div>
+                    <span className="text-sm font-medium text-gray-300">
+                      {goal.minute !== undefined ? `${goal.minute}'` : '—'}
+                    </span>
+                  </div>
+                );
+              })}
+              {match.saves?.map((entry) => {
+                const player = players.find((candidate) => candidate.id === entry.playerId);
+                return (
+                  <div
+                    key={entry.playerId}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-cyan-500/10">
+                        <Shield className="w-5 h-5 text-cyan-300" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{player?.name ?? 'Unknown player'}</p>
+                        <p className="text-sm text-gray-500">Saves</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-medium text-gray-300">{entry.saves}</p>
+                      <p className="text-xs text-gray-500">{getSavePoints(entry.saves)} pts</p>
+                    </div>
+                  </div>
+                );
+              })}
+              {matchGoals.length === 0 && (match.saves?.length ?? 0) === 0 && (
+                <p className="text-sm text-gray-500 italic text-center py-4">
+                  No recorded events yet.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
 
         {match.notes && (
           <div className="p-4 rounded-xl border border-white/5 bg-white/[0.02]">
@@ -867,6 +999,15 @@ function SquadPanel({ title, variant, players }: { title: string; variant: 'a' |
   );
 }
 
+function RsvpCountPill({ label, value, accent }: { label: string; value: number; accent: string }) {
+  return (
+    <div className="rounded-lg border border-white/5 bg-black/20 p-3 text-center">
+      <p className="text-xs uppercase tracking-wider text-gray-500 mb-1">{label}</p>
+      <p className={`text-xl font-bold ${accent}`}>{value}</p>
+    </div>
+  );
+}
+
 /* ============================================================
  * Team Assignment Modal
  * ============================================================ */
@@ -882,10 +1023,20 @@ function TeamAssignmentModal({ match, onClose, onBack }: TeamAssignmentModalProp
   const [teamA, setTeamA] = useState<string[]>(match.teamA.playerIds);
   const [teamB, setTeamB] = useState<string[]>(match.teamB.playerIds);
   const [shuffling, setShuffling] = useState(false);
+  const [saving, setSaving] = useState(false);
 
+  const checkedInPlayerIds = new Set(
+    (match.rsvps ?? [])
+      .filter((entry) => entry.status === 'in')
+      .map((entry) => entry.playerId)
+  );
+  const hasRsvpPool = checkedInPlayerIds.size > 0;
   const assignedPlayers = [...teamA, ...teamB];
   const availablePlayers = players.filter(
-    (p) => p.status === 'active' && !assignedPlayers.includes(p.id)
+    (p) =>
+      p.status === 'active'
+      && !assignedPlayers.includes(p.id)
+      && (!hasRsvpPool || checkedInPlayerIds.has(p.id))
   );
 
   const moveToTeamA = (playerId: string) => {
@@ -909,18 +1060,21 @@ function TeamAssignmentModal({ match, onClose, onBack }: TeamAssignmentModalProp
     setTeamB([]);
     setTimeout(() => {
       const pool = players.filter((p) => p.status === 'active').map((p) => p.id);
-      for (let i = pool.length - 1; i > 0; i--) {
+      const eligiblePool = hasRsvpPool ? pool.filter((id) => checkedInPlayerIds.has(id)) : pool;
+      for (let i = eligiblePool.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
-        [pool[i], pool[j]] = [pool[j], pool[i]];
+        [eligiblePool[i], eligiblePool[j]] = [eligiblePool[j], eligiblePool[i]];
       }
-      const half = Math.ceil(pool.length / 2);
-      setTeamA(pool.slice(0, half));
-      setTeamB(pool.slice(half));
+      const half = Math.ceil(eligiblePool.length / 2);
+      setTeamA(eligiblePool.slice(0, half));
+      setTeamB(eligiblePool.slice(half));
       setTimeout(() => setShuffling(false), 700);
     }, 280);
   };
 
   const handleSave = async () => {
+    if (saving) return;
+    setSaving(true);
     try {
       await updateMatch(match.id, {
         teamA: {
@@ -934,11 +1088,46 @@ function TeamAssignmentModal({ match, onClose, onBack }: TeamAssignmentModalProp
           ...(match.teamB.score !== undefined && { score: match.teamB.score }),
         },
       });
-      toast.success('Teams updated');
+
+      const recipients = [
+        ...teamA.map((playerId) => {
+          const player = players.find((entry) => entry.id === playerId);
+          return {
+            name: player?.name ?? 'Player',
+            email: player?.email ?? '',
+            teamName: match.teamA.name,
+          };
+        }),
+        ...teamB.map((playerId) => {
+          const player = players.find((entry) => entry.id === playerId);
+          return {
+            name: player?.name ?? 'Player',
+            email: player?.email ?? '',
+            teamName: match.teamB.name,
+          };
+        }),
+      ];
+
+      const emailResult = await sendTeamAssignmentEmails({
+        matchId: match.id,
+        date: formatMatchEmailDate(match.date),
+        time: match.time,
+        location: match.location,
+        notes: match.notes,
+        recipients,
+      });
+
+      if (emailResult.skippedCount > 0) {
+        toast.success(`Teams updated. Sent ${emailResult.sentCount} emails, skipped ${emailResult.skippedCount}.`);
+      } else {
+        toast.success(`Teams updated and ${emailResult.sentCount} emails sent.`);
+      }
       onClose();
     } catch (err) {
       console.error(err);
-      toast.error('Failed to update teams');
+      toast.error(err instanceof Error ? err.message : 'Failed to update teams');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -1029,7 +1218,7 @@ function TeamAssignmentModal({ match, onClose, onBack }: TeamAssignmentModalProp
   return (
     <ModalShell
       title="Team Assignment"
-      subtitle={`${assignedPlayers.length} assigned · ${availablePlayers.length} available`}
+      subtitle={`${assignedPlayers.length} assigned · ${availablePlayers.length} available${hasRsvpPool ? ' · RSVP in only' : ''}`}
       onClose={onClose}
       maxWidth="60rem"
       footer={
@@ -1058,11 +1247,12 @@ function TeamAssignmentModal({ match, onClose, onBack }: TeamAssignmentModalProp
           </motion.button>
           <motion.button
             onClick={handleSave}
+            disabled={saving}
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            className="btn-primary flex-1 py-2.5"
+            className="btn-primary flex-1 py-2.5 disabled:opacity-60"
           >
-            Save Teams
+            {saving ? 'Saving…' : 'Save Teams'}
           </motion.button>
         </>
       }
@@ -1170,17 +1360,39 @@ type GoalDraft = Omit<Goal, 'id' | 'matchId' | 'createdAt'>;
 type SaveDraft = SaveEntry;
 
 function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
-  const { players, recordResult } = useData();
-  const [teamAScore, setTeamAScore] = useState<number>(0);
-  const [teamBScore, setTeamBScore] = useState<number>(0);
-  const [goals, setGoals] = useState<GoalDraft[]>([]);
-  const [saves, setSaves] = useState<Record<string, number>>({});
+  const { players, goals: allGoals, recordResult } = useData();
+  const existingGoals = allGoals
+    .filter((goal) => goal.matchId === match.id)
+    .sort((a, b) => (a.minute ?? 999) - (b.minute ?? 999));
+  const [teamAScore, setTeamAScore] = useState<number>(match.teamA.score ?? 0);
+  const [teamBScore, setTeamBScore] = useState<number>(match.teamB.score ?? 0);
+  const [goals, setGoals] = useState<GoalDraft[]>(
+    existingGoals.map((goal) => ({
+      scorerId: goal.scorerId,
+      assistId: goal.assistId,
+      team: goal.team,
+      minute: goal.minute,
+    }))
+  );
+  const [saves, setSaves] = useState<Record<string, number>>(
+    Object.fromEntries((match.saves ?? []).map((entry) => [entry.playerId, entry.saves]))
+  );
   const [saving, setSaving] = useState(false);
 
   const teamAPlayers = players.filter((p) => match.teamA.playerIds.includes(p.id));
   const teamBPlayers = players.filter((p) => match.teamB.playerIds.includes(p.id));
   const teamAGoalkeepers = teamAPlayers.filter((p) => p.position === 'Goalkeeper');
   const teamBGoalkeepers = teamBPlayers.filter((p) => p.position === 'Goalkeeper');
+  const suggestedMvpId = getSuggestedMvpId({
+    playerIds: [...match.teamA.playerIds, ...match.teamB.playerIds],
+    goals,
+    saves: Object.entries(saves)
+      .map(([playerId, total]) => ({ playerId, saves: total }))
+      .filter((entry) => entry.saves > 0),
+  });
+  const suggestedMvp = suggestedMvpId
+    ? players.find((player) => player.id === suggestedMvpId)
+    : null;
 
   const addGoalRow = (team: 'A' | 'B') => {
     setGoals([...goals, { scorerId: '', assistId: undefined, team, minute: undefined }]);
@@ -1205,12 +1417,12 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
 
     setSaving(true);
     try {
-      await recordResult(match.id, teamAScore, teamBScore, goals, saveEntries);
-      toast.success('Result recorded');
+      await recordResult(match.id, teamAScore, teamBScore, goals, saveEntries, suggestedMvpId);
+      toast.success(match.status === 'completed' ? 'Result updated' : 'Result recorded');
       onClose();
     } catch (err) {
       console.error(err);
-      toast.error('Failed to record result');
+      toast.error(match.status === 'completed' ? 'Failed to update result' : 'Failed to record result');
     } finally {
       setSaving(false);
     }
@@ -1265,7 +1477,7 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
 
   return (
     <ModalShell
-      title="Record Result"
+      title={match.status === 'completed' ? 'Edit Result' : 'Record Result'}
       subtitle="Set final score, goalscorers, and goalkeeper saves."
       onClose={onClose}
       maxWidth="48rem"
@@ -1280,7 +1492,7 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
             disabled={saving}
             className="btn-primary flex-1 py-2.5 disabled:opacity-50"
           >
-            {saving ? 'Saving…' : 'Save Result'}
+            {saving ? 'Saving…' : match.status === 'completed' ? 'Update Result' : 'Save Result'}
           </button>
         </>
       }
@@ -1338,6 +1550,25 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
       </div>
 
       <div className="mt-8">
+        <div className="mb-6 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/20">
+                <Award className="w-5 h-5 text-emerald-300" />
+              </div>
+              <div>
+                <p className="font-medium text-emerald-200">
+                  {suggestedMvp?.name ?? 'No MVP suggested yet'}
+                </p>
+                <p className="text-sm text-emerald-100/70">
+                  Auto-suggested from goals, assists, and save points
+                </p>
+              </div>
+            </div>
+            <span className="btn-pill team-a pointer-events-none">MVP</span>
+          </div>
+        </div>
+
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-bold">Goalkeeper Saves</h3>
           <p className="text-sm text-gray-500">1 point per 4 saves</p>

@@ -75,6 +75,17 @@ async function ensureUserDoc(user: User): Promise<UserProfile> {
           draws: 0,
           createdAt: serverTimestamp(),
         });
+      } else {
+        await setDoc(
+          playerRef,
+          {
+            email: user.email ?? '',
+            uid: user.uid,
+            avatar: user.photoURL ?? null,
+            name: user.displayName ?? user.email ?? 'Player',
+          },
+          { merge: true }
+        );
       }
     }
   } else {
@@ -82,6 +93,19 @@ async function ensureUserDoc(user: User): Promise<UserProfile> {
     if (data.role !== role) {
       await setDoc(userRef, { role }, { merge: true });
     }
+  }
+
+  if (role === 'player') {
+    await setDoc(
+      doc(db, 'players', user.uid),
+      {
+        email: user.email ?? '',
+        uid: user.uid,
+        avatar: user.photoURL ?? null,
+        name: user.displayName ?? user.email ?? 'Player',
+      },
+      { merge: true }
+    );
   }
 
   const finalSnap = await getDoc(userRef);

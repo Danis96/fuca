@@ -34,7 +34,8 @@ interface DataContextType {
     teamAScore: number,
     teamBScore: number,
     goals: Array<Omit<Goal, 'id' | 'matchId' | 'createdAt'>>,
-    saves: SaveEntry[]
+    saves: SaveEntry[],
+    mvpId?: string
   ) => Promise<void>;
 }
 
@@ -55,7 +56,7 @@ function toDate(value: any): Date {
 }
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
-  const [players, setPlayers] = useState<Player[]>([]);
+  const [rawPlayers, setRawPlayers] = useState<Player[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loadingPlayers, setLoadingPlayers] = useState(true);
@@ -69,6 +70,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         return {
           id: d.id,
           name: data.name ?? '',
+          email: data.email ?? '',
           nickname: data.nickname ?? '',
           avatar: data.avatar ?? undefined,
           position: data.position ?? '',
@@ -83,7 +85,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           createdAt: toDate(data.createdAt),
         };
       });
-      setPlayers(list);
+      setRawPlayers(list);
       setLoadingPlayers(false);
     });
     return unsub;
@@ -111,6 +113,24 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             playerIds: data.teamB?.playerIds ?? [],
             score: data.teamB?.score,
           },
+          rsvps: Array.isArray(data.rsvps)
+            ? data.rsvps
+                .map((entry: any) => ({
+                  playerId: entry?.playerId ?? '',
+                  status: entry?.status ?? 'maybe',
+                  respondedAt: entry?.respondedAt ? toDate(entry.respondedAt) : undefined,
+                }))
+                .filter((entry) => entry.playerId)
+            : [],
+          saves: Array.isArray(data.saves)
+            ? data.saves
+                .map((entry: any) => ({
+                  playerId: entry?.playerId ?? '',
+                  saves: typeof entry?.saves === 'number' ? entry.saves : 0,
+                }))
+                .filter((entry) => entry.playerId)
+            : [],
+          mvpId: data.mvpId ?? undefined,
           createdAt: toDate(data.createdAt),
         };
       });
@@ -119,6 +139,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     });
     return unsub;
   }, []);
+
+  const players = rawPlayers;
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'goals'), (snap) => {
@@ -183,18 +205,69 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     teamAScore,
     teamBScore,
     newGoals,
-    saves
+    saves,
+    mvpId
   ) => {
     const match = matches.find((m) => m.id === matchId);
     if (!match) throw new Error('Match not found');
 
     const batch = writeBatch(db);
+    const existingGoals = goals.filter((goal) => goal.matchId === matchId);
+    const allPlayerIds = Array.from(new Set([...match.teamA.playerIds, ...match.teamB.playerIds]));
+
+    const countGoalsByPlayer = (goalList: Array<Pick<Goal, 'scorerId' | 'assistId'>>) => {
+      const goalCount: Record<string, number> = {};
+      const assistCount: Record<string, number> = {};
+      for (const goal of goalList) {
+        if (goal.scorerId) {
+          goalCount[goal.scorerId] = (goalCount[goal.scorerId] ?? 0) + 1;
+        }
+        if (goal.assistId) {
+          assistCount[goal.assistId] = (assistCount[goal.assistId] ?? 0) + 1;
+        }
+      }
+      return { goalCount, assistCount };
+    };
+
+    const countSavesByPlayer = (saveEntries: SaveEntry[]) => {
+      const saveCount: Record<string, number> = {};
+      for (const entry of saveEntries) {
+        if (!entry.playerId || entry.saves <= 0) continue;
+        saveCount[entry.playerId] = (saveCount[entry.playerId] ?? 0) + entry.saves;
+      }
+      return saveCount;
+    };
+
+    const getWinner = (aScore: number, bScore: number): 'A' | 'B' | 'D' =>
+      aScore > bScore ? 'A' : bScore > aScore ? 'B' : 'D';
+
+    const getResultForPlayer = (playerId: string, winner: 'A' | 'B' | 'D') => {
+      const onTeamA = match.teamA.playerIds.includes(playerId);
+      if (winner === 'D') return 'D' as const;
+      return (winner === 'A') === onTeamA ? 'W' as const : 'L' as const;
+    };
+
+    const oldWinner =
+      match.status === 'completed'
+        ? getWinner(match.teamA.score ?? 0, match.teamB.score ?? 0)
+        : null;
+    const newWinner = getWinner(teamAScore, teamBScore);
+    const { goalCount: oldGoalCount, assistCount: oldAssistCount } = countGoalsByPlayer(existingGoals);
+    const { goalCount: newGoalCount, assistCount: newAssistCount } = countGoalsByPlayer(newGoals);
+    const oldSaveCount = countSavesByPlayer(match.saves ?? []);
+    const newSaveCount = countSavesByPlayer(saves);
 
     batch.update(doc(db, 'matches', matchId), {
       status: 'completed',
       'teamA.score': teamAScore,
       'teamB.score': teamBScore,
+      saves,
+      mvpId: mvpId ?? null,
     });
+
+    for (const existingGoal of existingGoals) {
+      batch.delete(doc(db, 'goals', existingGoal.id));
+    }
 
     for (const g of newGoals) {
       const ref = doc(collection(db, 'goals'));
@@ -209,37 +282,40 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       batch.set(ref, payload);
     }
 
-    const allPlayerIds = [...match.teamA.playerIds, ...match.teamB.playerIds];
-    const winner: 'A' | 'B' | 'D' =
-      teamAScore > teamBScore ? 'A' : teamBScore > teamAScore ? 'B' : 'D';
-
-    const goalCount: Record<string, number> = {};
-    const assistCount: Record<string, number> = {};
-    const saveCount: Record<string, number> = {};
-    for (const g of newGoals) {
-      if (g.scorerId) goalCount[g.scorerId] = (goalCount[g.scorerId] ?? 0) + 1;
-      if (g.assistId) assistCount[g.assistId] = (assistCount[g.assistId] ?? 0) + 1;
-    }
-    for (const entry of saves) {
-      if (!entry.playerId || entry.saves <= 0) continue;
-      saveCount[entry.playerId] = (saveCount[entry.playerId] ?? 0) + entry.saves;
-    }
-
-    for (const pid of allPlayerIds) {
-      const player = players.find((p) => p.id === pid);
+    for (const playerId of allPlayerIds) {
+      const player = rawPlayers.find((entry) => entry.id === playerId);
       if (!player) continue;
-      const onTeamA = match.teamA.playerIds.includes(pid);
-      const result: 'W' | 'L' | 'D' =
-        winner === 'D' ? 'D' : (winner === 'A') === onTeamA ? 'W' : 'L';
 
-      batch.update(doc(db, 'players', pid), {
-        matchesPlayed: (player.matchesPlayed ?? 0) + 1,
-        wins: (player.wins ?? 0) + (result === 'W' ? 1 : 0),
-        losses: (player.losses ?? 0) + (result === 'L' ? 1 : 0),
-        draws: (player.draws ?? 0) + (result === 'D' ? 1 : 0),
-        totalGoals: (player.totalGoals ?? 0) + (goalCount[pid] ?? 0),
-        totalAssists: (player.totalAssists ?? 0) + (assistCount[pid] ?? 0),
-        totalSaves: (player.totalSaves ?? 0) + (saveCount[pid] ?? 0),
+      const oldResult = oldWinner ? getResultForPlayer(playerId, oldWinner) : null;
+      const newResult = getResultForPlayer(playerId, newWinner);
+
+      batch.update(doc(db, 'players', playerId), {
+        matchesPlayed:
+          (player.matchesPlayed ?? 0) + (match.status === 'completed' ? 0 : 1),
+        wins:
+          (player.wins ?? 0)
+          - (oldResult === 'W' ? 1 : 0)
+          + (newResult === 'W' ? 1 : 0),
+        losses:
+          (player.losses ?? 0)
+          - (oldResult === 'L' ? 1 : 0)
+          + (newResult === 'L' ? 1 : 0),
+        draws:
+          (player.draws ?? 0)
+          - (oldResult === 'D' ? 1 : 0)
+          + (newResult === 'D' ? 1 : 0),
+        totalGoals:
+          (player.totalGoals ?? 0)
+          - (oldGoalCount[playerId] ?? 0)
+          + (newGoalCount[playerId] ?? 0),
+        totalAssists:
+          (player.totalAssists ?? 0)
+          - (oldAssistCount[playerId] ?? 0)
+          + (newAssistCount[playerId] ?? 0),
+        totalSaves:
+          (player.totalSaves ?? 0)
+          - (oldSaveCount[playerId] ?? 0)
+          + (newSaveCount[playerId] ?? 0),
       });
     }
 

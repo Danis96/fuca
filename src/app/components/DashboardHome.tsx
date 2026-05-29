@@ -1,12 +1,13 @@
 import { motion } from 'motion/react';
 import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { Calendar, Trophy, Target, Users, TrendingUp, Award } from 'lucide-react';
+import { Calendar, Trophy, Target, Users, TrendingUp, Award, Flame, Link2, Shield } from 'lucide-react';
 import { format } from 'date-fns';
 import { getTotalPoints } from '../../lib/playerStats';
+import { getBestPartnership, getBiggestWin, getTopFormPlayer } from '../../lib/storyStats';
 
 export function DashboardHome() {
-  const { players, matches } = useData();
+  const { players, matches, goals } = useData();
   const { userProfile } = useAuth();
 
   const upcomingMatch = matches.find((m) => m.status === 'scheduled');
@@ -19,6 +20,9 @@ export function DashboardHome() {
 
   const topScorer = [...players].sort((a, b) => b.totalGoals - a.totalGoals)[0];
   const topAssister = [...players].sort((a, b) => b.totalAssists - a.totalAssists)[0];
+  const topFormPlayer = getTopFormPlayer(players, matches, goals);
+  const biggestWin = getBiggestWin(matches);
+  const bestPartnership = getBestPartnership(players, matches);
 
   const cards = [
     {
@@ -203,6 +207,143 @@ export function DashboardHome() {
           </div>
         </div>
       </div>
+
+      <div className="mt-8">
+        <div className="flex items-center gap-3 mb-4">
+          <span className="w-1 h-5 rounded-full bg-gradient-to-b from-amber-400 to-rose-500"></span>
+          <h2 className="text-xl font-bold">League Storylines</h2>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <StoryCard
+            icon={Flame}
+            accent="#f97316"
+            title="Hot Right Now"
+            value={topFormPlayer?.player?.name ?? 'No leader yet'}
+            players={topFormPlayer?.player ? [topFormPlayer.player] : []}
+            subtitle={
+              topFormPlayer
+                ? `${topFormPlayer.score} form pts across last ${topFormPlayer.windowSize} matches`
+                : 'Complete more matches to unlock form'
+            }
+          />
+          <StoryCard
+            icon={Shield}
+            accent="#06b6d4"
+            title="Biggest Win"
+            value={
+              biggestWin
+                ? `${biggestWin.match.teamA.score ?? 0} - ${biggestWin.match.teamB.score ?? 0}`
+                : 'No result yet'
+            }
+            subtitle={
+              biggestWin
+                ? `${biggestWin.margin}-goal margin at ${biggestWin.match.location}`
+                : 'No completed matches yet'
+            }
+          />
+          <StoryCard
+            icon={Link2}
+            accent="#a855f7"
+            title="Best Partnership"
+            value={
+              bestPartnership?.players[0] && bestPartnership?.players[1]
+                ? `${bestPartnership.players[0].name} + ${bestPartnership.players[1].name}`
+                : 'No duo yet'
+            }
+            players={bestPartnership?.players.filter((player): player is NonNullable<typeof player> => Boolean(player)) ?? []}
+            subtitle={
+              bestPartnership
+                ? `${bestPartnership.wins} wins together in ${bestPartnership.matches} matches`
+                : 'Need completed matches with teammates'
+            }
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StoryCard({
+  icon: Icon,
+  accent,
+  title,
+  value,
+  players = [],
+  subtitle,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  accent: string;
+  title: string;
+  value: string;
+  players?: Array<{ id: string; name: string; avatar?: string }>;
+  subtitle: string;
+}) {
+  return (
+    <motion.div
+      className="stat-card"
+      style={{ ['--card-accent' as any]: accent }}
+      initial={{ opacity: 0, y: 18, scale: 0.96 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+      whileHover={{ y: -4, transition: { duration: 0.2 } }}
+    >
+      <div className="flex items-start justify-between relative z-10 gap-4">
+        <div className="flex-1 min-w-0">
+          <p className="text-xs uppercase tracking-wider font-semibold text-gray-500 mb-2">{title}</p>
+          <p className="text-2xl font-bold mb-1">{value}</p>
+          <p className="text-sm text-gray-500">{subtitle}</p>
+          {players.length > 0 && (
+            <div className="mt-4 flex items-center gap-3">
+              <div className="flex -space-x-3">
+                {players.slice(0, 2).map((player, index) => (
+                  <PlayerAvatar key={player.id} player={player} accent={accent} elevated={index === 0} />
+                ))}
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-gray-100 truncate">
+                  {players.map((player) => player.name).join(' + ')}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {players.length === 1 ? 'Featured player' : 'Featured partnership'}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="icon-badge shrink-0">
+          <Icon className="w-6 h-6 text-white" />
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function PlayerAvatar({
+  player,
+  accent,
+  elevated = false,
+}: {
+  player: { name: string; avatar?: string };
+  accent: string;
+  elevated?: boolean;
+}) {
+  const initial = player.name.charAt(0).toUpperCase();
+
+  return (
+    <div
+      className={`h-12 w-12 overflow-hidden rounded-full border-2 border-[#0f1720] ${elevated ? 'shadow-lg' : ''}`}
+      style={{ boxShadow: elevated ? `0 8px 20px -12px ${accent}` : undefined }}
+    >
+      {player.avatar ? (
+        <img src={player.avatar} alt={player.name} className="h-full w-full object-cover" />
+      ) : (
+        <div
+          className="flex h-full w-full items-center justify-center text-sm font-bold text-white"
+          style={{ background: `linear-gradient(135deg, ${accent}, rgba(255,255,255,0.18))` }}
+        >
+          {initial}
+        </div>
+      )}
     </div>
   );
 }

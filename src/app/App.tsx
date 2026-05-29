@@ -10,7 +10,13 @@ import { PlayersScreen } from './components/PlayersScreen';
 import { MatchesScreen } from './components/MatchesScreen';
 import { LeaderboardScreen } from './components/LeaderboardScreen';
 import { PlayerProfileScreen } from './components/PlayerProfileScreen';
+import { MatchRsvpScreen } from './components/MatchRsvpScreen';
 import { Toaster } from 'sonner';
+
+function getRsvpMatchId() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('rsvp') === '1' ? params.get('match') : null;
+}
 
 export default function App() {
   return (
@@ -27,6 +33,7 @@ function AppContent() {
   const { user, loading } = useAuth();
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
+  const [rsvpMatchId, setRsvpMatchId] = useState<string | null>(() => getRsvpMatchId());
 
   if (loading) {
     return (
@@ -66,9 +73,21 @@ function AppContent() {
     );
   }
 
-  const pageKey = selectedPlayerId ? `player-${selectedPlayerId}` : currentPage;
+  const pageKey = rsvpMatchId ? `rsvp-${rsvpMatchId}` : selectedPlayerId ? `player-${selectedPlayerId}` : currentPage;
+
+  const exitRsvp = () => {
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.delete('match');
+    nextUrl.searchParams.delete('rsvp');
+    window.history.replaceState({}, '', nextUrl);
+    setRsvpMatchId(null);
+  };
 
   const renderPage = () => {
+    if (rsvpMatchId) {
+      return <MatchRsvpScreen matchId={rsvpMatchId} onBack={exitRsvp} />;
+    }
+
     if (selectedPlayerId) {
       return (
         <PlayerProfileScreen

@@ -155,7 +155,16 @@ export function PlayersScreen({ onSelectPlayer }: PlayersScreenProps) {
           onClose={() => setShowAddModal(false)}
           onSave={async (data) => {
             try {
-              await addPlayer(data);
+              await addPlayer({
+                ...data,
+                totalGoals: 0,
+                totalAssists: 0,
+                totalSaves: 0,
+                matchesPlayed: 0,
+                wins: 0,
+                losses: 0,
+                draws: 0,
+              });
               setShowAddModal(false);
               toast.success('Player added');
             } catch (err) {
@@ -188,17 +197,11 @@ export function PlayersScreen({ onSelectPlayer }: PlayersScreenProps) {
 
 interface PlayerFormData {
   name: string;
+  email: string;
   nickname: string;
   position: string;
   status: 'active' | 'inactive';
   avatar: string;
-  totalGoals: number;
-  totalAssists: number;
-  totalSaves: number;
-  matchesPlayed: number;
-  wins: number;
-  losses: number;
-  draws: number;
 }
 
 interface PlayerModalProps {
@@ -210,17 +213,11 @@ interface PlayerModalProps {
 function PlayerModal({ player, onClose, onSave }: PlayerModalProps) {
   const [formData, setFormData] = useState<PlayerFormData>({
     name: player?.name ?? '',
+    email: player?.email ?? '',
     nickname: player?.nickname ?? '',
     position: player?.position ?? '',
     status: player?.status ?? 'active',
     avatar: player?.avatar ?? '',
-    totalGoals: player?.totalGoals ?? 0,
-    totalAssists: player?.totalAssists ?? 0,
-    totalSaves: player?.totalSaves ?? 0,
-    matchesPlayed: player?.matchesPlayed ?? 0,
-    wins: player?.wins ?? 0,
-    losses: player?.losses ?? 0,
-    draws: player?.draws ?? 0,
   });
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -317,6 +314,17 @@ function PlayerModal({ player, onClose, onSave }: PlayerModalProps) {
           </div>
 
           <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Email *</label>
+            <input
+              type="email"
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
+              required
+            />
+          </div>
+
+          <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Nickname</label>
             <input
               type="text"
@@ -356,14 +364,8 @@ function PlayerModal({ player, onClose, onSave }: PlayerModalProps) {
           </div>
 
           {player && (
-            <div className="grid grid-cols-2 gap-3">
-              <NumField label="Goals" value={formData.totalGoals} onChange={(v) => setFormData({ ...formData, totalGoals: v })} />
-              <NumField label="Assists" value={formData.totalAssists} onChange={(v) => setFormData({ ...formData, totalAssists: v })} />
-              <NumField label="Saves" value={formData.totalSaves} onChange={(v) => setFormData({ ...formData, totalSaves: v })} />
-              <NumField label="Matches" value={formData.matchesPlayed} onChange={(v) => setFormData({ ...formData, matchesPlayed: v })} />
-              <NumField label="Wins" value={formData.wins} onChange={(v) => setFormData({ ...formData, wins: v })} />
-              <NumField label="Draws" value={formData.draws} onChange={(v) => setFormData({ ...formData, draws: v })} />
-              <NumField label="Losses" value={formData.losses} onChange={(v) => setFormData({ ...formData, losses: v })} />
+            <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+              Stats are now derived from completed matches, goals, and saves. Edit match results to change player totals.
             </div>
           )}
 
@@ -384,21 +386,6 @@ function PlayerModal({ player, onClose, onSave }: PlayerModalProps) {
           </div>
         </form>
       </div>
-    </div>
-  );
-}
-
-function NumField({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
-  return (
-    <div>
-      <label className="block text-xs font-medium text-gray-700 mb-1">{label}</label>
-      <input
-        type="number"
-        min={0}
-        value={value}
-        onChange={(e) => onChange(parseInt(e.target.value || '0', 10))}
-        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
-      />
     </div>
   );
 }
