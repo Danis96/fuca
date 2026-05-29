@@ -16,6 +16,20 @@ export interface Player {
   createdAt: Date;
 }
 
+export type MatchAwardKey = 'scorer' | 'assist' | 'goalkeeper' | 'mvp';
+
+export interface MatchAward {
+  title: string;
+  winnerId?: string;
+}
+
+export interface MatchAwards {
+  scorer: MatchAward;
+  assist: MatchAward;
+  goalkeeper: MatchAward;
+  mvp: MatchAward;
+}
+
 export interface Match {
   id: string;
   date: Date;
@@ -28,6 +42,7 @@ export interface Match {
   rsvps?: MatchRsvp[];
   saves?: SaveEntry[];
   mvpId?: string;
+  awards?: MatchAwards;
   createdAt: Date;
 }
 

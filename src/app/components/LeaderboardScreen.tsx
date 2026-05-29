@@ -1,20 +1,33 @@
 import { useState } from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'motion/react';
 import { useData } from '../../contexts/DataContext';
-import { Trophy, Target, TrendingUp, Award, Medal } from 'lucide-react';
+import { Trophy, Target, TrendingUp, Award, Medal, Shield } from 'lucide-react';
+import { getPlayerAwardCounts } from '../../lib/matchAwards';
 import { getSavePoints, getTotalPoints } from '../../lib/playerStats';
 
-type LeaderboardTab = 'goals' | 'assists' | 'saves' | 'total' | 'matches';
+type LeaderboardTab =
+  | 'goals'
+  | 'assists'
+  | 'saves'
+  | 'total'
+  | 'matches'
+  | 'awardScorer'
+  | 'awardAssist'
+  | 'awardGoalkeeper'
+  | 'awardMvp';
 
 interface LeaderboardScreenProps {
   onSelectPlayer?: (id: string) => void;
 }
 
 export function LeaderboardScreen({ onSelectPlayer }: LeaderboardScreenProps) {
-  const { players } = useData();
+  const { players, matches } = useData();
   const [activeTab, setActiveTab] = useState<LeaderboardTab>('total');
 
   const sorted = [...players].sort((a, b) => {
+    const awardA = getPlayerAwardCounts(matches, a.id);
+    const awardB = getPlayerAwardCounts(matches, b.id);
+
     switch (activeTab) {
       case 'goals':
         return b.totalGoals - a.totalGoals;
@@ -24,6 +37,14 @@ export function LeaderboardScreen({ onSelectPlayer }: LeaderboardScreenProps) {
         return b.totalSaves - a.totalSaves;
       case 'matches':
         return b.matchesPlayed - a.matchesPlayed;
+      case 'awardScorer':
+        return awardB.scorer - awardA.scorer;
+      case 'awardAssist':
+        return awardB.assist - awardA.assist;
+      case 'awardGoalkeeper':
+        return awardB.goalkeeper - awardA.goalkeeper;
+      case 'awardMvp':
+        return awardB.mvp - awardA.mvp;
       default:
         return getTotalPoints(b) - getTotalPoints(a);
     }
@@ -35,6 +56,10 @@ export function LeaderboardScreen({ onSelectPlayer }: LeaderboardScreenProps) {
     { id: 'assists' as LeaderboardTab, label: 'Assists', icon: Target },
     { id: 'saves' as LeaderboardTab, label: 'Saves', icon: TrendingUp },
     { id: 'matches' as LeaderboardTab, label: 'Matches', icon: TrendingUp },
+    { id: 'awardScorer' as LeaderboardTab, label: 'Baller Awards', icon: Trophy },
+    { id: 'awardAssist' as LeaderboardTab, label: 'Wizard Awards', icon: Target },
+    { id: 'awardGoalkeeper' as LeaderboardTab, label: 'Brick Wall Awards', icon: Shield },
+    { id: 'awardMvp' as LeaderboardTab, label: 'Menace Awards', icon: Award },
   ];
 
   const topScorer = [...players].sort((a, b) => b.totalGoals - a.totalGoals)[0];
@@ -119,6 +144,14 @@ export function LeaderboardScreen({ onSelectPlayer }: LeaderboardScreenProps) {
                       ? player.totalSaves
                       : activeTab === 'matches'
                       ? player.matchesPlayed
+                      : activeTab === 'awardScorer'
+                      ? getPlayerAwardCounts(matches, player.id).scorer
+                      : activeTab === 'awardAssist'
+                      ? getPlayerAwardCounts(matches, player.id).assist
+                      : activeTab === 'awardGoalkeeper'
+                      ? getPlayerAwardCounts(matches, player.id).goalkeeper
+                      : activeTab === 'awardMvp'
+                      ? getPlayerAwardCounts(matches, player.id).mvp
                       : getTotalPoints(player);
 
                   return (
@@ -172,12 +205,13 @@ export function LeaderboardScreen({ onSelectPlayer }: LeaderboardScreenProps) {
                         </div>
                       </motion.div>
 
-                      <motion.div layout="position" className="hidden md:grid grid-cols-4 gap-6 mr-4">
+                      <motion.div layout="position" className="hidden md:grid grid-cols-5 gap-6 mr-4">
                         {([
                           { key: 'goals', label: 'Goals', val: player.totalGoals },
                           { key: 'assists', label: 'Assists', val: player.totalAssists },
                           { key: 'saves', label: 'Saves', val: player.totalSaves },
                           { key: 'matches', label: 'Matches', val: player.matchesPlayed },
+                          { key: 'awards', label: 'Awards', val: Object.values(getPlayerAwardCounts(matches, player.id)).reduce((sum, count) => sum + count, 0) },
                         ] as const).map((s) => {
                           const isActive = activeTab === s.key;
                           return (
@@ -211,7 +245,13 @@ export function LeaderboardScreen({ onSelectPlayer }: LeaderboardScreenProps) {
                           </AnimatePresence>
                         </div>
                         <p className="text-xs text-gray-500">
-                          {activeTab === 'total' ? 'pts' : activeTab === 'matches' ? 'played' : activeTab}
+                          {activeTab === 'total'
+                            ? 'pts'
+                            : activeTab === 'matches'
+                            ? 'played'
+                            : activeTab.startsWith('award')
+                            ? 'wins'
+                            : activeTab}
                         </p>
                       </motion.div>
                     </motion.div>
