@@ -1,11 +1,28 @@
 import { Goal, Match, MatchAwards, MatchAwardKey, Player, SaveEntry } from '../types';
 
 export const DEFAULT_MATCH_AWARDS: MatchAwards = {
-  scorer: { title: 'Baller of the Week' },
+  scorer: { title: 'Week Top Scorer' },
   assist: { title: 'Assist Wizard' },
-  goalkeeper: { title: 'Brick Wall' },
-  mvp: { title: 'Certified Menace' },
+  goalkeeper: { title: 'Week Top Goalkeeper' },
+  mvp: { title: 'Player of the Week' },
 };
+
+const LEGACY_AWARD_TITLES: Partial<Record<keyof MatchAwards, string[]>> = {
+  scorer: ['Baller of the Week'],
+  goalkeeper: ['Brick Wall'],
+  mvp: ['Certified Menace'],
+};
+
+function resolveAwardTitle(key: keyof MatchAwards, title: string | undefined) {
+  const trimmed = title?.trim();
+  if (!trimmed) return DEFAULT_MATCH_AWARDS[key].title;
+
+  if (LEGACY_AWARD_TITLES[key]?.includes(trimmed)) {
+    return DEFAULT_MATCH_AWARDS[key].title;
+  }
+
+  return trimmed;
+}
 
 function rankEntries<T extends string>(
   totals: Record<T, number>,
@@ -25,19 +42,19 @@ export function getResolvedMatchAwards(
 ): MatchAwards {
   return {
     scorer: {
-      title: input?.scorer?.title?.trim() || DEFAULT_MATCH_AWARDS.scorer.title,
+      title: resolveAwardTitle('scorer', input?.scorer?.title),
       winnerId: input?.scorer?.winnerId,
     },
     assist: {
-      title: input?.assist?.title?.trim() || DEFAULT_MATCH_AWARDS.assist.title,
+      title: resolveAwardTitle('assist', input?.assist?.title),
       winnerId: input?.assist?.winnerId,
     },
     goalkeeper: {
-      title: input?.goalkeeper?.title?.trim() || DEFAULT_MATCH_AWARDS.goalkeeper.title,
+      title: resolveAwardTitle('goalkeeper', input?.goalkeeper?.title),
       winnerId: input?.goalkeeper?.winnerId,
     },
     mvp: {
-      title: input?.mvp?.title?.trim() || DEFAULT_MATCH_AWARDS.mvp.title,
+      title: resolveAwardTitle('mvp', input?.mvp?.title),
       winnerId: input?.mvp?.winnerId,
     },
   };
