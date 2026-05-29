@@ -30,23 +30,21 @@ function escapeHtml(value: string) {
     .replaceAll("'", '&#39;');
 }
 
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+async function getProviderErrorDetails(response: Response) {
+  const raw = await response.text();
+  if (!raw) return 'Unknown provider error';
 
-async function runInBatches<T>(tasks: Array<() => Promise<T>>, batchSize: number, delayMs: number) {
-  const results: T[] = [];
-
-  for (let start = 0; start < tasks.length; start += batchSize) {
-    const batch = tasks.slice(start, start + batchSize);
-    results.push(...(await Promise.all(batch.map((task) => task()))));
-
-    if (start + batchSize < tasks.length) {
-      await sleep(delayMs);
-    }
+  try {
+    const parsed = JSON.parse(raw) as {
+      code?: string;
+      message?: string;
+      error?: string;
+      errors?: Record<string, unknown> | Array<unknown>;
+    };
+    return [parsed.code, parsed.message, parsed.error].filter(Boolean).join(': ') || raw;
+  } catch {
+    return raw;
   }
-
-  return results;
 }
 
 export const handler = async (event: { httpMethod?: string; body?: string | null }) => {
@@ -54,12 +52,12 @@ export const handler = async (event: { httpMethod?: string; body?: string | null
     return json(405, { error: 'Method not allowed' });
   }
 
-  const resendApiKey = process.env.RESEND_API_KEY;
+  const brevoApiKey = process.env.BREVO_API_KEY;
   const fromEmail = process.env.TEAM_EMAIL_FROM;
 
-  if (!resendApiKey || !fromEmail) {
+  if (!brevoApiKey || !fromEmail) {
     return json(500, {
-      error: 'Email service is not configured. Set RESEND_API_KEY and TEAM_EMAIL_FROM.',
+      error: 'Email service is not configured. Set BREVO_API_KEY and TEAM_EMAIL_FROM.',
     });
   }
 
@@ -82,62 +80,70 @@ export const handler = async (event: { httpMethod?: string; body?: string | null
     return json(200, { sentCount: 0, skippedCount: (payload.recipients ?? []).length });
   }
 
-  const requests = validRecipients.map((recipient) => {
-    const safeName = escapeHtml(recipient.name);
-    const safeTeam = escapeHtml(recipient.teamName);
-    const safeDate = escapeHtml(payload.date);
-    const safeTime = escapeHtml(payload.time);
-    const safeLocation = escapeHtml(payload.location);
-    const safeNotes = payload.notes?.trim() ? escapeHtml(payload.notes.trim()) : '';
+  const safeDate = escapeHtml(payload.date);
+  const safeTime = escapeHtml(payload.time);
+  const safeLocation = escapeHtml(payload.location);
+  const safeNotes = payload.notes?.trim() ? escapeHtml(payload.notes.trim()) : '';
 
-    return () =>
-      fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${resendApiKey}`,
-          'Content-Type': 'application/json',
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'api-key': brevoApiKey,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      sender: {
+        email: fromEmail,
+        name: 'Fuca',
+      },
+      subject: 'Your team for the upcoming match: {{params.teamName}}',
+      htmlContent: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827;">
+          <p>Hi {{params.playerName}},</p>
+          <p>You have been assigned to <strong>{{params.teamName}}</strong>.</p>
+          <p>
+            <strong>Game date:</strong> ${safeDate}<br />
+            <strong>Time:</strong> ${safeTime}<br />
+            <strong>Location:</strong> ${safeLocation}
+          </p>
+          ${safeNotes ? `<p><strong>Notes:</strong> ${safeNotes}</p>` : ''}
+          <p>See you at the match.</p>
+        </div>
+      `,
+      textContent: [
+        'Hi {{params.playerName}},',
+        '',
+        'You have been assigned to {{params.teamName}}.',
+        `Game date: ${payload.date}`,
+        `Time: ${payload.time}`,
+        `Location: ${payload.location}`,
+        payload.notes?.trim() ? `Notes: ${payload.notes.trim()}` : '',
+        '',
+        'See you at the match.',
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      messageVersions: validRecipients.map((recipient) => ({
+        to: [
+          {
+            email: recipient.email,
+            name: recipient.name,
+          },
+        ],
+        params: {
+          playerName: recipient.name,
+          teamName: recipient.teamName,
         },
-        body: JSON.stringify({
-          from: fromEmail,
-          to: recipient.email,
-          subject: `Your team for the upcoming match: ${recipient.teamName}`,
-          text: [
-            `Hi ${recipient.name},`,
-            '',
-            `You have been assigned to ${recipient.teamName}.`,
-            `Game date: ${payload.date}`,
-            `Time: ${payload.time}`,
-            `Location: ${payload.location}`,
-            safeNotes ? `Notes: ${payload.notes?.trim()}` : '',
-            '',
-            'See you at the match.',
-          ]
-            .filter(Boolean)
-            .join('\n'),
-          html: `
-            <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827;">
-              <p>Hi ${safeName},</p>
-              <p>You have been assigned to <strong>${safeTeam}</strong>.</p>
-              <p>
-                <strong>Game date:</strong> ${safeDate}<br />
-                <strong>Time:</strong> ${safeTime}<br />
-                <strong>Location:</strong> ${safeLocation}
-              </p>
-              ${safeNotes ? `<p><strong>Notes:</strong> ${safeNotes}</p>` : ''}
-              <p>See you at the match.</p>
-            </div>
-          `,
-        }),
-      });
+        subject: `Your team for the upcoming match: ${recipient.teamName}`,
+      })),
+    }),
   });
 
-  const responses = await runInBatches(requests, 4, 1000);
-  const failed = responses.filter((response) => !response.ok);
-
-  if (failed.length > 0) {
-    const details = await failed[0].text();
+  if (!response.ok) {
+    const details = await getProviderErrorDetails(response);
     return json(502, {
-      error: `Email provider rejected ${failed.length} message(s). ${details}`,
+      error: `Email provider rejected request. ${details}`,
     });
   }
 

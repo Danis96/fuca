@@ -30,23 +30,21 @@ function escapeHtml(value: string) {
     .replaceAll("'", '&#39;');
 }
 
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+async function getProviderErrorDetails(response: Response) {
+  const raw = await response.text();
+  if (!raw) return 'Unknown provider error';
 
-async function runInBatches<T>(tasks: Array<() => Promise<T>>, batchSize: number, delayMs: number) {
-  const results: T[] = [];
-
-  for (let start = 0; start < tasks.length; start += batchSize) {
-    const batch = tasks.slice(start, start + batchSize);
-    results.push(...(await Promise.all(batch.map((task) => task()))));
-
-    if (start + batchSize < tasks.length) {
-      await sleep(delayMs);
-    }
+  try {
+    const parsed = JSON.parse(raw) as {
+      code?: string;
+      message?: string;
+      error?: string;
+      errors?: Record<string, unknown> | Array<unknown>;
+    };
+    return [parsed.code, parsed.message, parsed.error].filter(Boolean).join(': ') || raw;
+  } catch {
+    return raw;
   }
-
-  return results;
 }
 
 export const handler = async (event: { httpMethod?: string; body?: string | null }) => {
@@ -54,12 +52,12 @@ export const handler = async (event: { httpMethod?: string; body?: string | null
     return json(405, { error: 'Method not allowed' });
   }
 
-  const resendApiKey = process.env.RESEND_API_KEY;
+  const brevoApiKey = process.env.BREVO_API_KEY;
   const fromEmail = process.env.TEAM_EMAIL_FROM;
 
-  if (!resendApiKey || !fromEmail) {
+  if (!brevoApiKey || !fromEmail) {
     return json(500, {
-      error: 'Email service is not configured. Set RESEND_API_KEY and TEAM_EMAIL_FROM.',
+      error: 'Email service is not configured. Set BREVO_API_KEY and TEAM_EMAIL_FROM.',
     });
   }
 
@@ -87,70 +85,75 @@ export const handler = async (event: { httpMethod?: string; body?: string | null
   const safeLocation = escapeHtml(payload.location);
   const safeRsvpUrl = escapeHtml(payload.rsvpUrl);
   const safeNotes = payload.notes?.trim() ? escapeHtml(payload.notes.trim()) : '';
-
-  const requests = validRecipients.map((recipient) => {
-    const safeName = escapeHtml(recipient.name);
-
-    return () =>
-      fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${resendApiKey}`,
-          'Content-Type': 'application/json',
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'api-key': brevoApiKey,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      sender: {
+        email: fromEmail,
+        name: 'Fuca',
+      },
+      subject: `New match scheduled: ${payload.date} at ${payload.time}`,
+      htmlContent: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827;">
+          <p>Hi {{params.playerName}},</p>
+          <p>A new match has been scheduled.</p>
+          <p>
+            <strong>Date:</strong> ${safeDate}<br />
+            <strong>Time:</strong> ${safeTime}<br />
+            <strong>Location:</strong> ${safeLocation}
+          </p>
+          ${safeNotes ? `<p><strong>Notes:</strong> ${safeNotes}</p>` : ''}
+          <p>
+            <a
+              href="${safeRsvpUrl}"
+              style="display: inline-block; padding: 12px 18px; border-radius: 999px; background: #059669; color: #ffffff; text-decoration: none; font-weight: 700;"
+            >
+              RSVP for this match
+            </a>
+          </p>
+          <p>If the button does not work, open this link:</p>
+          <p><a href="${safeRsvpUrl}">${safeRsvpUrl}</a></p>
+          <p>Sign in with your player account to respond.</p>
+        </div>
+      `,
+      textContent: [
+        'Hi {{params.playerName}},',
+        '',
+        'A new match has been scheduled.',
+        `Date: ${payload.date}`,
+        `Time: ${payload.time}`,
+        `Location: ${payload.location}`,
+        payload.notes?.trim() ? `Notes: ${payload.notes.trim()}` : '',
+        '',
+        `RSVP here: ${payload.rsvpUrl}`,
+        '',
+        'Sign in with your player account to respond.',
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      messageVersions: validRecipients.map((recipient) => ({
+        to: [
+          {
+            email: recipient.email,
+            name: recipient.name,
+          },
+        ],
+        params: {
+          playerName: recipient.name,
         },
-        body: JSON.stringify({
-          from: fromEmail,
-          to: recipient.email,
-          subject: `New match scheduled: ${payload.date} at ${payload.time}`,
-          text: [
-            `Hi ${recipient.name},`,
-            '',
-            'A new match has been scheduled.',
-            `Date: ${payload.date}`,
-            `Time: ${payload.time}`,
-            `Location: ${payload.location}`,
-            payload.notes?.trim() ? `Notes: ${payload.notes.trim()}` : '',
-            '',
-            `RSVP here: ${payload.rsvpUrl}`,
-            '',
-            'Sign in with your player account to respond.',
-          ]
-            .filter(Boolean)
-            .join('\n'),
-          html: `
-            <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827;">
-              <p>Hi ${safeName},</p>
-              <p>A new match has been scheduled.</p>
-              <p>
-                <strong>Date:</strong> ${safeDate}<br />
-                <strong>Time:</strong> ${safeTime}<br />
-                <strong>Location:</strong> ${safeLocation}
-              </p>
-              ${safeNotes ? `<p><strong>Notes:</strong> ${safeNotes}</p>` : ''}
-              <p>
-                <a
-                  href="${safeRsvpUrl}"
-                  style="display: inline-block; padding: 12px 18px; border-radius: 999px; background: #059669; color: #ffffff; text-decoration: none; font-weight: 700;"
-                >
-                  RSVP for this match
-                </a>
-              </p>
-              <p>If the button does not work, open this link:</p>
-              <p><a href="${safeRsvpUrl}">${safeRsvpUrl}</a></p>
-              <p>Sign in with your player account to respond.</p>
-            </div>
-          `,
-        }),
-      });
+      })),
+    }),
   });
 
-  const responses = await runInBatches(requests, 4, 1000);
-  const failed = responses.filter((response) => !response.ok);
-
-  if (failed.length > 0) {
-    const details = await failed[0].text();
+  if (!response.ok) {
+    const details = await getProviderErrorDetails(response);
     return json(502, {
-      error: `Email provider rejected ${failed.length} message(s). ${details}`,
+      error: `Email provider rejected request. ${details}`,
     });
   }
 
