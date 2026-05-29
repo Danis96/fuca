@@ -25,8 +25,8 @@ export function DashboardHome() {
   const formLeaders = getTopFormPlayers(players, matches, goals, 2);
   const secondHot = formLeaders[1] ?? null;
   const biggestWin = getBiggestWin(matches);
-  const bestPartnership = getBestPartnership(players, matches);
-  const bestPartnerships = getBestPartnerships(players, matches, 2);
+  const bestPartnership = getBestPartnership(players, matches, goals);
+  const bestPartnerships = getBestPartnerships(players, matches, goals, 2);
   const secondBestPartnership = bestPartnerships[1] ?? null;
   const latestWeeklyAwards = getLatestWeeklyAwardWinners(players, matches);
   const biggestWinTeamAPlayers = biggestWin
@@ -291,15 +291,33 @@ export function DashboardHome() {
             players={bestPartnership?.players.filter((player): player is NonNullable<typeof player> => Boolean(player)) ?? []}
             subtitle={
               bestPartnership
-                ? `${bestPartnership.wins} wins together in ${bestPartnership.matches} matches`
-                : 'Need completed matches with teammates'
+                ? `${bestPartnership.linkedGoals} linked goals in ${bestPartnership.matches} matches`
+                : 'Need assisted goal links to unlock chemistry'
+            }
+            details={
+              bestPartnership ? (
+                <div className="space-y-2">
+                  {bestPartnership.topDirection && (
+                    <CompactDetail
+                      label="Most common combo"
+                      value={`${players.find((player) => player.id === bestPartnership.topDirection?.assistId)?.name ?? 'Unknown'} -> ${players.find((player) => player.id === bestPartnership.topDirection?.scorerId)?.name ?? 'Unknown'}`}
+                      subvalue={`${bestPartnership.topDirection.count} linked goals`}
+                    />
+                  )}
+                  <CompactDetail
+                    label="Chemistry"
+                    value={bestPartnership.isTwoWay ? '2-way chemistry' : 'One-way connection'}
+                    subvalue={`${bestPartnership.wins} wins together · score ${bestPartnership.chemistryScore}`}
+                  />
+                </div>
+              ) : null
             }
             footerDetails={
               secondBestPartnership?.players[0] && secondBestPartnership?.players[1] ? (
                 <CompactDetail
                   label="Second best"
                   value={`${secondBestPartnership.players[0].name} + ${secondBestPartnership.players[1].name}`}
-                  subvalue={`${secondBestPartnership.wins} wins in ${secondBestPartnership.matches} matches`}
+                  subvalue={`${secondBestPartnership.linkedGoals} linked goals in ${secondBestPartnership.matches} matches`}
                 />
               ) : null
             }

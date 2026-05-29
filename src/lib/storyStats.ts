@@ -108,14 +108,21 @@ export function getBiggestWin(matches: Match[]) {
   return best;
 }
 
-export function getBestPartnership(players: Player[], matches: Match[]) {
-  return getBestPartnerships(players, matches, 1)[0] ?? null;
+export function getBestPartnership(players: Player[], matches: Match[], goals: Goal[]) {
+  return getBestPartnerships(players, matches, goals, 1)[0] ?? null;
 }
 
-export function getBestPartnerships(players: Player[], matches: Match[], limit = 2) {
-  const pairStats: Record<string, { pair: [string, string]; wins: number; matches: number }> = {};
+export function getBestPartnerships(players: Player[], matches: Match[], goals: Goal[], limit = 2) {
+  const completedMatches = getCompletedMatches(matches);
+  const pairStats: Record<string, {
+    pair: [string, string];
+    wins: number;
+    matches: number;
+    linkedGoals: number;
+    directionCounts: Record<string, number>;
+  }> = {};
 
-  for (const match of getCompletedMatches(matches)) {
+  for (const match of completedMatches) {
     const teams = [match.teamA.playerIds, match.teamB.playerIds];
     for (const team of teams) {
       for (let i = 0; i < team.length; i += 1) {
@@ -123,7 +130,7 @@ export function getBestPartnerships(players: Player[], matches: Match[], limit =
           const pair: [string, string] = [team[i], team[j]].sort() as [string, string];
           const key = pair.join(':');
           if (!pairStats[key]) {
-            pairStats[key] = { pair, wins: 0, matches: 0 };
+            pairStats[key] = { pair, wins: 0, matches: 0, linkedGoals: 0, directionCounts: {} };
           }
           pairStats[key].matches += 1;
 
@@ -137,17 +144,57 @@ export function getBestPartnerships(players: Player[], matches: Match[], limit =
     }
   }
 
+  for (const goal of goals) {
+    if (!goal.assistId || !goal.scorerId) continue;
+
+    const match = completedMatches.find((entry) => entry.id === goal.matchId);
+    if (!match) continue;
+
+    const teamPlayers = goal.team === 'A' ? match.teamA.playerIds : match.teamB.playerIds;
+    const sameTeam =
+      teamPlayers.includes(goal.scorerId) && teamPlayers.includes(goal.assistId);
+    if (!sameTeam) continue;
+
+    const pair: [string, string] = [goal.scorerId, goal.assistId].sort() as [string, string];
+    const key = pair.join(':');
+    if (!pairStats[key]) continue;
+
+    pairStats[key].linkedGoals += 1;
+    const directionKey = `${goal.assistId}->${goal.scorerId}`;
+    pairStats[key].directionCounts[directionKey] = (pairStats[key].directionCounts[directionKey] ?? 0) + 1;
+  }
+
   return Object.values(pairStats)
+    .filter((entry) => entry.linkedGoals > 0)
     .sort((a, b) => {
+      const scoreA = a.linkedGoals * 5 + a.wins * 2 + a.matches;
+      const scoreB = b.linkedGoals * 5 + b.wins * 2 + b.matches;
+      if (scoreB !== scoreA) return scoreB - scoreA;
+      if (b.linkedGoals !== a.linkedGoals) return b.linkedGoals - a.linkedGoals;
       if (b.wins !== a.wins) return b.wins - a.wins;
       return b.matches - a.matches;
     })
     .slice(0, limit)
-    .map((entry) => ({
-      players: entry.pair.map((id) => players.find((player) => player.id === id) ?? null),
-      wins: entry.wins,
-      matches: entry.matches,
-    }));
+    .map((entry) => {
+      const topDirection = Object.entries(entry.directionCounts).sort((a, b) => b[1] - a[1])[0];
+      const reverseDirections = Object.keys(entry.directionCounts);
+
+      return {
+        players: entry.pair.map((id) => players.find((player) => player.id === id) ?? null),
+        wins: entry.wins,
+        matches: entry.matches,
+        linkedGoals: entry.linkedGoals,
+        topDirection: topDirection
+          ? {
+              assistId: topDirection[0].split('->')[0],
+              scorerId: topDirection[0].split('->')[1],
+              count: topDirection[1],
+            }
+          : null,
+        isTwoWay: reverseDirections.length > 1,
+        chemistryScore: entry.linkedGoals * 5 + entry.wins * 2 + entry.matches,
+      };
+    });
 }
 
 export function getPlayerMvpCount(matches: Match[], playerId: string) {
