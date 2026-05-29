@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Match, Goal, SaveEntry } from '../../types';
+import { Match, Goal, SaveEntry, Player } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
 import {
@@ -22,6 +22,7 @@ import {
   Sparkles,
   Shield,
   Copy,
+  Mail,
 } from 'lucide-react';
 import {
   format,
@@ -38,12 +39,38 @@ import {
   startOfDay,
 } from 'date-fns';
 import { toast } from 'sonner';
-import { formatMatchEmailDate, sendTeamAssignmentEmails } from '../../lib/teamNotifications';
+import {
+  formatMatchEmailDate,
+  sendMatchScheduleEmails,
+  sendTeamAssignmentEmails,
+} from '../../lib/teamNotifications';
 import { getSavePoints, getSuggestedMvpId } from '../../lib/playerStats';
+function getMatchRsvpUrl(matchId: string) {
+  return `${window.location.origin}${window.location.pathname}?rsvp=1&match=${encodeURIComponent(matchId)}`;
+}
+
+async function resendMatchInvites(match: Pick<Match, 'id' | 'date' | 'time' | 'location' | 'notes'>, players: Player[]) {
+  const recipients = players
+    .filter((player) => player.status === 'active')
+    .map((player) => ({
+      name: player.name || 'Player',
+      email: player.email ?? '',
+    }));
+
+  return sendMatchScheduleEmails({
+    matchId: match.id,
+    date: formatMatchEmailDate(match.date),
+    time: match.time,
+    location: match.location,
+    notes: match.notes,
+    rsvpUrl: getMatchRsvpUrl(match.id),
+    recipients,
+  });
+}
 
 export function MatchesScreen() {
   const { isAdmin } = useAuth();
-  const { matches, addMatch, deleteMatch } = useData();
+  const { matches, players, addMatch, deleteMatch } = useData();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
 
@@ -133,12 +160,24 @@ export function MatchesScreen() {
             onClose={() => setShowCreateModal(false)}
             onSave={async (data) => {
               try {
-                await addMatch(data);
+                const matchId = await addMatch(data);
+                const emailResult = await resendMatchInvites({
+                  id: matchId,
+                  date: data.date,
+                  time: data.time,
+                  location: data.location,
+                  notes: data.notes,
+                }, players);
+
                 setShowCreateModal(false);
-                toast.success('Match scheduled');
+                if (emailResult.skippedCount > 0) {
+                  toast.success(`Match scheduled. Sent ${emailResult.sentCount} emails, skipped ${emailResult.skippedCount}.`);
+                } else {
+                  toast.success(`Match scheduled and ${emailResult.sentCount} RSVP emails sent.`);
+                }
               } catch (err) {
                 console.error(err);
-                toast.error('Failed to schedule');
+                toast.error(err instanceof Error ? err.message : 'Failed to schedule');
               }
             }}
           />
@@ -357,7 +396,7 @@ function ModalShell({ title, subtitle, onClose, children, footer, maxWidth = '32
 
 interface CreateMatchModalProps {
   onClose: () => void;
-  onSave: (data: Omit<Match, 'id' | 'createdAt'>) => Promise<void> | void;
+  onSave: (data: Omit<Match, 'id' | 'createdAt'>) => Promise<unknown> | unknown;
 }
 
 function CreateMatchModal({ onClose, onSave }: CreateMatchModalProps) {
@@ -736,6 +775,7 @@ interface MatchDetailsModalProps {
 function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) {
   const { players, goals } = useData();
   const [view, setView] = useState<'details' | 'teams' | 'result'>('details');
+  const [sendingInvites, setSendingInvites] = useState(false);
 
   const teamAPlayers = players.filter((p) => match.teamA.playerIds.includes(p.id));
   const teamBPlayers = players.filter((p) => match.teamB.playerIds.includes(p.id));
@@ -750,15 +790,30 @@ function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) 
   };
 
   const copyRsvpLink = async () => {
-    const url = new URL(window.location.href);
-    url.searchParams.set('match', match.id);
-    url.searchParams.set('rsvp', '1');
     try {
-      await navigator.clipboard.writeText(url.toString());
+      await navigator.clipboard.writeText(getMatchRsvpUrl(match.id));
       toast.success('RSVP link copied');
     } catch (error) {
       console.error(error);
       toast.error('Failed to copy RSVP link');
+    }
+  };
+
+  const handleSendInvites = async () => {
+    if (sendingInvites) return;
+    setSendingInvites(true);
+    try {
+      const emailResult = await resendMatchInvites(match, players);
+      if (emailResult.skippedCount > 0) {
+        toast.success(`Invites sent to ${emailResult.sentCount} players, skipped ${emailResult.skippedCount}.`);
+      } else {
+        toast.success(`Invites sent to ${emailResult.sentCount} players.`);
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error(error instanceof Error ? error.message : 'Failed to send invites');
+    } finally {
+      setSendingInvites(false);
     }
   };
 
@@ -779,17 +834,27 @@ function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) 
       onClose={onClose}
       maxWidth="42rem"
       footer={
-        <>
+        <div className="match-details-footer-actions">
           <button onClick={onClose} className="btn-secondary flex-1">
             Close
           </button>
           {isAdmin && (
             <>
               {match.status === 'scheduled' && (
-                <button onClick={() => setView('teams')} className="btn-secondary flex-1 inline-flex items-center justify-center gap-2">
-                  <ArrowRightLeft className="w-4 h-4" />
-                  Teams
-                </button>
+                <>
+                  <button
+                    onClick={handleSendInvites}
+                    disabled={sendingInvites}
+                    className="btn-secondary flex-1 inline-flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    <Mail className="w-4 h-4" />
+                    {sendingInvites ? 'Sending…' : 'Send Invites'}
+                  </button>
+                  <button onClick={() => setView('teams')} className="btn-secondary flex-1 inline-flex items-center justify-center gap-2">
+                    <ArrowRightLeft className="w-4 h-4" />
+                    Teams
+                  </button>
+                </>
               )}
               <button onClick={() => setView('result')} className="btn-primary flex-1 py-2.5 inline-flex items-center justify-center gap-2">
                 <ClipboardCheck className="w-4 h-4" />
@@ -797,7 +862,7 @@ function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) 
               </button>
             </>
           )}
-        </>
+        </div>
       }
     >
       <div className="space-y-6">
