@@ -1,8 +1,7 @@
 import { ReactNode, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
-import { Home, Users, Calendar, Trophy, LogOut, Menu, X, Sun, Moon } from 'lucide-react';
+import { Home, Users, Calendar, Trophy, LogOut, Menu, X } from 'lucide-react';
 
 interface LayoutProps {
   children: ReactNode;
@@ -12,7 +11,6 @@ interface LayoutProps {
 
 export function Layout({ children, currentPage, onNavigate }: LayoutProps) {
   const { signOut, userProfile } = useAuth();
-  const { theme, toggleTheme } = useTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const navigation = [
@@ -82,18 +80,6 @@ export function Layout({ children, currentPage, onNavigate }: LayoutProps) {
             </div>
 
             <div className="flex items-center gap-3">
-              <motion.button
-                onClick={toggleTheme}
-                title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-                className="theme-toggle"
-                whileHover={{ scale: 1.08 }}
-                whileTap={{ scale: 0.92, rotate: 180 }}
-                transition={{ type: 'spring', stiffness: 300, damping: 18 }}
-              >
-                <Sun className={`w-4 h-4 absolute transition-all duration-500 ${theme === 'light' ? 'opacity-100 rotate-0 scale-100' : 'opacity-0 -rotate-90 scale-50'}`} />
-                <Moon className={`w-4 h-4 absolute transition-all duration-500 ${theme === 'dark' ? 'opacity-100 rotate-0 scale-100' : 'opacity-0 rotate-90 scale-50'}`} />
-              </motion.button>
-
               <div className="hidden md:flex user-chip">
                 <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-400 to-violet-600 flex items-center justify-center text-violet-950 font-bold text-sm">
                   {userProfile?.email?.charAt(0).toUpperCase() ?? '?'}

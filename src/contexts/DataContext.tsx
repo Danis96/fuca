@@ -14,7 +14,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Player, Match, Goal, SaveEntry } from '../types';
-import { getAwardWinners, getResolvedMatchAwards } from '../lib/matchAwards';
+import { getAwardWinners, getResolvedMatchAwards, toFirestoreMatchAwards } from '../lib/matchAwards';
 
 interface DataContextType {
   players: Player[];
@@ -185,9 +185,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   };
 
   const addMatch: DataContextType['addMatch'] = async (data) => {
+    const awards = getResolvedMatchAwards(data.awards);
     const ref = await addDoc(collection(db, 'matches'), {
       ...data,
-      awards: getResolvedMatchAwards(data.awards),
+      awards: toFirestoreMatchAwards(awards),
       date: data.date,
       createdAt: serverTimestamp(),
     });
@@ -196,6 +197,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const updateMatch: DataContextType['updateMatch'] = async (id, data) => {
     const { id: _omit, createdAt: _c, ...rest } = data as any;
+    if (rest.awards) {
+      rest.awards = toFirestoreMatchAwards(getResolvedMatchAwards(rest.awards));
+    }
     await updateDoc(doc(db, 'matches', id), rest);
   };
 
@@ -273,7 +277,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       'teamB.score': teamBScore,
       saves,
       mvpId: mvpId ?? null,
-      awards,
+      awards: toFirestoreMatchAwards(awards),
     });
 
     for (const existingGoal of existingGoals) {
