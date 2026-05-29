@@ -1,10 +1,11 @@
 import { motion } from 'motion/react';
+import type { ReactNode } from 'react';
 import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { Calendar, Trophy, Target, Users, TrendingUp, Award, Flame, Link2, Shield } from 'lucide-react';
 import { format } from 'date-fns';
 import { getTotalPoints } from '../../lib/playerStats';
-import { getBestPartnership, getBiggestWin, getTopFormPlayer } from '../../lib/storyStats';
+import { getBestPartnership, getBestPartnerships, getBiggestWin, getLatestWeeklyAwardWinners, getTopFormPlayer, getTopFormPlayers } from '../../lib/storyStats';
 
 export function DashboardHome() {
   const { players, matches, goals } = useData();
@@ -21,8 +22,23 @@ export function DashboardHome() {
   const topScorer = [...players].sort((a, b) => b.totalGoals - a.totalGoals)[0];
   const topAssister = [...players].sort((a, b) => b.totalAssists - a.totalAssists)[0];
   const topFormPlayer = getTopFormPlayer(players, matches, goals);
+  const formLeaders = getTopFormPlayers(players, matches, goals, 2);
+  const secondHot = formLeaders[1] ?? null;
   const biggestWin = getBiggestWin(matches);
   const bestPartnership = getBestPartnership(players, matches);
+  const bestPartnerships = getBestPartnerships(players, matches, 2);
+  const secondBestPartnership = bestPartnerships[1] ?? null;
+  const latestWeeklyAwards = getLatestWeeklyAwardWinners(players, matches);
+  const biggestWinTeamAPlayers = biggestWin
+    ? biggestWin.match.teamA.playerIds
+        .map((playerId) => players.find((player) => player.id === playerId))
+        .filter((player): player is NonNullable<typeof player> => Boolean(player))
+    : [];
+  const biggestWinTeamBPlayers = biggestWin
+    ? biggestWin.match.teamB.playerIds
+        .map((playerId) => players.find((player) => player.id === playerId))
+        .filter((player): player is NonNullable<typeof player> => Boolean(player))
+    : [];
 
   const cards = [
     {
@@ -213,17 +229,26 @@ export function DashboardHome() {
           <span className="w-1 h-5 rounded-full bg-gradient-to-b from-amber-400 to-rose-500"></span>
           <h2 className="text-xl font-bold">League Storylines</h2>
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-5">
           <StoryCard
             icon={Flame}
             accent="#f97316"
-            title="Hot Right Now"
+            title="On Fire"
             value={topFormPlayer?.player?.name ?? 'No leader yet'}
             players={topFormPlayer?.player ? [topFormPlayer.player] : []}
             subtitle={
               topFormPlayer
                 ? `${topFormPlayer.score} form pts across last ${topFormPlayer.windowSize} matches`
                 : 'Complete more matches to unlock form'
+            }
+            footerDetails={
+              secondHot?.player ? (
+                <CompactDetail
+                  label="Second hottest"
+                  value={secondHot.player.name}
+                  subvalue={`${secondHot.score} pts`}
+                />
+              ) : null
             }
           />
           <StoryCard
@@ -239,6 +264,19 @@ export function DashboardHome() {
               biggestWin
                 ? `${biggestWin.margin}-goal margin at ${biggestWin.match.location}`
                 : 'No completed matches yet'
+            }
+            details={
+              biggestWin ? (
+                <div className="space-y-2">
+                  <CompactDetail
+                    label="Teams"
+                    value={`Team A ${biggestWin.match.teamA.score ?? 0} - ${biggestWin.match.teamB.score ?? 0} Team B`}
+                    subvalue={format(biggestWin.match.date, 'MMM dd, yyyy')}
+                  />
+                  <CompactRoster label="Team A players" players={biggestWinTeamAPlayers} />
+                  <CompactRoster label="Team B players" players={biggestWinTeamBPlayers} />
+                </div>
+              ) : null
             }
           />
           <StoryCard
@@ -256,7 +294,17 @@ export function DashboardHome() {
                 ? `${bestPartnership.wins} wins together in ${bestPartnership.matches} matches`
                 : 'Need completed matches with teammates'
             }
+            footerDetails={
+              secondBestPartnership?.players[0] && secondBestPartnership?.players[1] ? (
+                <CompactDetail
+                  label="Second best"
+                  value={`${secondBestPartnership.players[0].name} + ${secondBestPartnership.players[1].name}`}
+                  subvalue={`${secondBestPartnership.wins} wins in ${secondBestPartnership.matches} matches`}
+                />
+              ) : null
+            }
           />
+          <WeeklyAwardsCard latestWeeklyAwards={latestWeeklyAwards} />
         </div>
       </div>
     </div>
@@ -270,6 +318,8 @@ function StoryCard({
   value,
   players = [],
   subtitle,
+  details,
+  footerDetails,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   accent: string;
@@ -277,6 +327,8 @@ function StoryCard({
   value: string;
   players?: Array<{ id: string; name: string; avatar?: string }>;
   subtitle: string;
+  details?: ReactNode;
+  footerDetails?: ReactNode;
 }) {
   return (
     <motion.div
@@ -290,10 +342,11 @@ function StoryCard({
       <div className="flex items-start justify-between relative z-10 gap-4">
         <div className="flex-1 min-w-0">
           <p className="text-xs uppercase tracking-wider font-semibold text-gray-500 mb-2">{title}</p>
-          <p className="text-2xl font-bold mb-1">{value}</p>
+          <p className="text-2xl font-bold mb-1 leading-tight">{value}</p>
           <p className="text-sm text-gray-500">{subtitle}</p>
+          {details && <div className="mt-3">{details}</div>}
           {players.length > 0 && (
-            <div className="mt-4 flex items-center gap-3">
+            <div className="mt-3 flex items-center gap-3">
               <div className="flex -space-x-3">
                 {players.slice(0, 2).map((player, index) => (
                   <PlayerAvatar key={player.id} player={player} accent={accent} elevated={index === 0} />
@@ -309,9 +362,97 @@ function StoryCard({
               </div>
             </div>
           )}
+          {footerDetails && <div className="mt-3">{footerDetails}</div>}
         </div>
         <div className="icon-badge shrink-0">
           <Icon className="w-6 h-6 text-white" />
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function CompactDetail({
+  label,
+  value,
+  subvalue,
+}: {
+  label: string;
+  value: string;
+  subvalue?: string;
+}) {
+  return (
+    <div className="rounded-lg bg-white/[0.03] px-3 py-2">
+      <p className="text-[10px] uppercase tracking-wider text-gray-500">{label}</p>
+      <p className="text-sm font-medium leading-tight">{value}</p>
+      {subvalue && <p className="text-xs text-gray-500 mt-0.5">{subvalue}</p>}
+    </div>
+  );
+}
+
+function CompactRoster({
+  label,
+  players,
+}: {
+  label: string;
+  players: Array<{ id: string; name: string }>;
+}) {
+  const names = players.map((player) => player.name).join(', ');
+
+  return (
+    <div className="rounded-lg bg-white/[0.03] px-3 py-2">
+      <p className="text-[10px] uppercase tracking-wider text-gray-500">{label}</p>
+      <p className="text-xs text-gray-300 leading-relaxed">{names || 'No players'}</p>
+    </div>
+  );
+}
+
+function WeeklyAwardsCard({
+  latestWeeklyAwards,
+}: {
+  latestWeeklyAwards: ReturnType<typeof getLatestWeeklyAwardWinners>;
+}) {
+  return (
+    <motion.div
+      className="stat-card"
+      style={{ ['--card-accent' as any]: '#14b8a6' }}
+      initial={{ opacity: 0, y: 18, scale: 0.96 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+      whileHover={{ y: -4, transition: { duration: 0.2 } }}
+    >
+      <div className="flex items-start justify-between relative z-10 gap-4">
+        <div className="flex-1 min-w-0">
+          <p className="text-xs uppercase tracking-wider font-semibold text-gray-500 mb-2">Weekly Award Winners</p>
+          <p className="text-2xl font-bold mb-1">
+            {latestWeeklyAwards ? format(latestWeeklyAwards.match.date, 'MMM dd') : 'No awards yet'}
+          </p>
+          <p className="text-sm text-gray-500 mb-4">
+            {latestWeeklyAwards ? 'From the latest completed match' : 'Record a match result to crown winners'}
+          </p>
+          <div className="space-y-2">
+            {(latestWeeklyAwards?.items ?? []).map((item) => (
+              <div key={item.key} className="flex items-center justify-between gap-3 rounded-lg bg-white/[0.03] px-3 py-2">
+                <div className="min-w-0">
+                  <p className="text-xs uppercase tracking-wider text-gray-500">{item.title}</p>
+                  <p className="text-sm font-medium truncate">{item.winner?.name ?? 'No winner'}</p>
+                </div>
+                {item.winner?.avatar ? (
+                  <img src={item.winner.avatar} alt={item.winner.name} className="h-9 w-9 rounded-full object-cover border border-white/10" />
+                ) : (
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-teal-500/15 text-sm font-bold text-teal-300">
+                    {item.winner?.name?.charAt(0).toUpperCase() ?? '—'}
+                  </div>
+                )}
+              </div>
+            ))}
+            {!latestWeeklyAwards && (
+              <p className="text-sm text-gray-500">No weekly award data yet.</p>
+            )}
+          </div>
+        </div>
+        <div className="icon-badge shrink-0">
+          <Award className="w-6 h-6 text-white" />
         </div>
       </div>
     </motion.div>

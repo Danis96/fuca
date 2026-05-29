@@ -76,13 +76,14 @@ async function ensureUserDoc(user: User): Promise<UserProfile> {
           createdAt: serverTimestamp(),
         });
       } else {
+        const existingPlayer = playerSnap.data() ?? {};
         await setDoc(
           playerRef,
           {
             email: user.email ?? '',
             uid: user.uid,
-            avatar: user.photoURL ?? null,
             name: user.displayName ?? user.email ?? 'Player',
+            ...(!existingPlayer.avatar && user.photoURL ? { avatar: user.photoURL } : {}),
           },
           { merge: true }
         );
@@ -96,13 +97,16 @@ async function ensureUserDoc(user: User): Promise<UserProfile> {
   }
 
   if (role === 'player') {
+    const playerRef = doc(db, 'players', user.uid);
+    const playerSnap = await getDoc(playerRef);
+    const existingPlayer = playerSnap.data() ?? {};
     await setDoc(
-      doc(db, 'players', user.uid),
+      playerRef,
       {
         email: user.email ?? '',
         uid: user.uid,
-        avatar: user.photoURL ?? null,
         name: user.displayName ?? user.email ?? 'Player',
+        ...(!existingPlayer.avatar && user.photoURL ? { avatar: user.photoURL } : {}),
       },
       { merge: true }
     );

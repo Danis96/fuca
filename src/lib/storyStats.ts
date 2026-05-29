@@ -57,8 +57,12 @@ export function getPlayerCurrentStreak(matches: Match[], playerId: string) {
 }
 
 export function getTopFormPlayer(players: Player[], matches: Match[], goals: Goal[]) {
+  return getTopFormPlayers(players, matches, goals, 1)[0] ?? null;
+}
+
+export function getTopFormPlayers(players: Player[], matches: Match[], goals: Goal[], limit = 2) {
   const recentMatches = getCompletedMatches(matches).slice(-3);
-  if (!recentMatches.length) return null;
+  if (!recentMatches.length) return [];
 
   const recentMatchIds = new Set(recentMatches.map((match) => match.id));
   const scoreByPlayer: Record<string, number> = {};
@@ -81,14 +85,15 @@ export function getTopFormPlayer(players: Player[], matches: Match[], goals: Goa
     }
   }
 
-  const best = Object.entries(scoreByPlayer).sort((a, b) => b[1] - a[1])[0];
-  if (!best || best[1] <= 0) return null;
-
-  return {
-    player: players.find((player) => player.id === best[0]) ?? null,
-    score: best[1],
-    windowSize: recentMatches.length,
-  };
+  return Object.entries(scoreByPlayer)
+    .sort((a, b) => b[1] - a[1])
+    .filter(([, score]) => score > 0)
+    .slice(0, limit)
+    .map(([playerId, score]) => ({
+      player: players.find((player) => player.id === playerId) ?? null,
+      score,
+      windowSize: recentMatches.length,
+    }));
 }
 
 export function getBiggestWin(matches: Match[]) {
@@ -104,6 +109,10 @@ export function getBiggestWin(matches: Match[]) {
 }
 
 export function getBestPartnership(players: Player[], matches: Match[]) {
+  return getBestPartnerships(players, matches, 1)[0] ?? null;
+}
+
+export function getBestPartnerships(players: Player[], matches: Match[], limit = 2) {
   const pairStats: Record<string, { pair: [string, string]; wins: number; matches: number }> = {};
 
   for (const match of getCompletedMatches(matches)) {
@@ -128,20 +137,43 @@ export function getBestPartnership(players: Player[], matches: Match[]) {
     }
   }
 
-  const best = Object.values(pairStats).sort((a, b) => {
-    if (b.wins !== a.wins) return b.wins - a.wins;
-    return b.matches - a.matches;
-  })[0];
-
-  if (!best) return null;
-
-  return {
-    players: best.pair.map((id) => players.find((player) => player.id === id) ?? null),
-    wins: best.wins,
-    matches: best.matches,
-  };
+  return Object.values(pairStats)
+    .sort((a, b) => {
+      if (b.wins !== a.wins) return b.wins - a.wins;
+      return b.matches - a.matches;
+    })
+    .slice(0, limit)
+    .map((entry) => ({
+      players: entry.pair.map((id) => players.find((player) => player.id === id) ?? null),
+      wins: entry.wins,
+      matches: entry.matches,
+    }));
 }
 
 export function getPlayerMvpCount(matches: Match[], playerId: string) {
   return matches.filter((match) => match.status === 'completed' && match.mvpId === playerId).length;
+}
+
+export function getLatestWeeklyAwardWinners(players: Player[], matches: Match[]) {
+  const latestMatch = [...getCompletedMatches(matches)].reverse().find((match) => match.awards);
+  if (!latestMatch?.awards) return null;
+
+  const items = ([
+    { key: 'scorer', fallback: 'Baller of the Week' },
+    { key: 'assist', fallback: 'Assist Wizard' },
+    { key: 'goalkeeper', fallback: 'Brick Wall' },
+    { key: 'mvp', fallback: 'Certified Menace' },
+  ] as const).map(({ key, fallback }) => ({
+    key,
+    title: latestMatch.awards?.[key].title || fallback,
+    winner:
+      latestMatch.awards?.[key].winnerId
+        ? players.find((player) => player.id === latestMatch.awards?.[key].winnerId) ?? null
+        : null,
+  }));
+
+  return {
+    match: latestMatch,
+    items,
+  };
 }

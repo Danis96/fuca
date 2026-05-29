@@ -1,6 +1,6 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, ReactNode } from 'react';
 
-type Theme = 'dark' | 'light';
+type Theme = 'dark';
 
 interface ThemeContextValue {
   theme: Theme;
@@ -10,29 +10,19 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
-const STORAGE_KEY = 'fuca-theme';
-
-function getInitialTheme(): Theme {
-  if (typeof window === 'undefined') return 'dark';
-  const stored = window.localStorage.getItem(STORAGE_KEY);
-  if (stored === 'light' || stored === 'dark') return stored;
-  return 'dark';
-}
-
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(getInitialTheme);
+  const theme: Theme = 'dark';
 
   useEffect(() => {
     const root = document.documentElement;
-    root.classList.toggle('light', theme === 'light');
-    root.classList.toggle('dark', theme === 'dark');
-    window.localStorage.setItem(STORAGE_KEY, theme);
-  }, [theme]);
+    root.classList.remove('light');
+    root.classList.add('dark');
+  }, []);
 
   const value: ThemeContextValue = {
     theme,
-    setTheme: setThemeState,
-    toggleTheme: () => setThemeState((t) => (t === 'dark' ? 'light' : 'dark')),
+    setTheme: () => {},
+    toggleTheme: () => {},
   };
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

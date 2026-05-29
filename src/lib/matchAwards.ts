@@ -43,6 +43,27 @@ export function getResolvedMatchAwards(
   };
 }
 
+export function toFirestoreMatchAwards(awards: MatchAwards) {
+  return {
+    scorer: {
+      title: awards.scorer.title,
+      ...(awards.scorer.winnerId ? { winnerId: awards.scorer.winnerId } : {}),
+    },
+    assist: {
+      title: awards.assist.title,
+      ...(awards.assist.winnerId ? { winnerId: awards.assist.winnerId } : {}),
+    },
+    goalkeeper: {
+      title: awards.goalkeeper.title,
+      ...(awards.goalkeeper.winnerId ? { winnerId: awards.goalkeeper.winnerId } : {}),
+    },
+    mvp: {
+      title: awards.mvp.title,
+      ...(awards.mvp.winnerId ? { winnerId: awards.mvp.winnerId } : {}),
+    },
+  };
+}
+
 export function getAwardWinners({
   awards,
   goals,
@@ -78,7 +99,7 @@ export function getAwardWinners({
   const topScorer = rankEntries(goalCount, playersById)[0];
   const topAssister = rankEntries(assistCount, playersById)[0];
   const topGoalkeeper = rankEntries(saveCount, playersById)[0];
-  const resolved = getResolvedMatchAwards(awards, players);
+  const resolved = getResolvedMatchAwards(awards);
 
   return {
     scorer: {
