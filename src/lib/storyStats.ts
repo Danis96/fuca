@@ -159,10 +159,10 @@ export function getLatestWeeklyAwardWinners(players: Player[], matches: Match[])
   if (!latestMatch?.awards) return null;
 
   const items = ([
-    { key: 'scorer', fallback: 'Baller of the Week' },
+    { key: 'scorer', fallback: 'Week Top Scorer' },
     { key: 'assist', fallback: 'Assist Wizard' },
-    { key: 'goalkeeper', fallback: 'Brick Wall' },
-    { key: 'mvp', fallback: 'Certified Menace' },
+    { key: 'goalkeeper', fallback: 'Week Top Goalkeeper' },
+    { key: 'mvp', fallback: 'Player of the Week' },
   ] as const).map(({ key, fallback }) => ({
     key,
     title: latestMatch.awards?.[key].title || fallback,
