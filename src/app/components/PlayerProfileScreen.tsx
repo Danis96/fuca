@@ -1,6 +1,7 @@
 import { useData } from '../../contexts/DataContext';
 import { ArrowLeft, Trophy, Target, TrendingUp, Award, Calendar, User, Flame, Medal } from 'lucide-react';
 import { format } from 'date-fns';
+import { getPlayerAwardCounts } from '../../lib/matchAwards';
 import { getSavePoints, getTotalPoints } from '../../lib/playerStats';
 import { getPlayerCurrentStreak, getPlayerMvpCount, getPlayerRecentForm } from '../../lib/storyStats';
 
@@ -35,6 +36,9 @@ export function PlayerProfileScreen({ playerId, onBack }: PlayerProfileScreenPro
   const recentForm = getPlayerRecentForm(matches, playerId, 5);
   const streak = getPlayerCurrentStreak(matches, playerId);
   const mvpCount = getPlayerMvpCount(matches, playerId);
+  const awardCounts = getPlayerAwardCounts(matches, playerId);
+  const totalWeeklyAwards =
+    awardCounts.scorer + awardCounts.assist + awardCounts.goalkeeper + awardCounts.mvp;
 
   const goalContributionPerMatch =
     player.matchesPlayed > 0
@@ -47,6 +51,7 @@ export function PlayerProfileScreen({ playerId, onBack }: PlayerProfileScreenPro
     { label: 'Total Saves', value: player.totalSaves, icon: TrendingUp, color: 'bg-cyan-500' },
     { label: 'Total Points', value: getTotalPoints(player), icon: Award, color: 'bg-green-500' },
     { label: 'G+A per Match', value: goalContributionPerMatch, icon: TrendingUp, color: 'bg-purple-500' },
+    { label: 'Weekly Awards', value: totalWeeklyAwards, icon: Medal, color: 'bg-amber-500' },
   ];
 
   const record = [
@@ -218,10 +223,31 @@ export function PlayerProfileScreen({ playerId, onBack }: PlayerProfileScreenPro
             </div>
             <div className="flex items-center justify-between">
               <span className="inline-flex items-center gap-2 text-gray-700">
+                <Trophy className="w-4 h-4 text-yellow-500" />
+                Baller Awards
+              </span>
+              <span className="text-2xl font-bold text-gray-900">{awardCounts.scorer}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="inline-flex items-center gap-2 text-gray-700">
+                <Target className="w-4 h-4 text-blue-500" />
+                Wizard Awards
+              </span>
+              <span className="text-2xl font-bold text-gray-900">{awardCounts.assist}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="inline-flex items-center gap-2 text-gray-700">
+                <TrendingUp className="w-4 h-4 text-cyan-500" />
+                Brick Wall Awards
+              </span>
+              <span className="text-2xl font-bold text-gray-900">{awardCounts.goalkeeper}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="inline-flex items-center gap-2 text-gray-700">
                 <Medal className="w-4 h-4 text-emerald-500" />
                 MVP Awards
               </span>
-              <span className="text-2xl font-bold text-gray-900">{mvpCount}</span>
+              <span className="text-2xl font-bold text-gray-900">{Math.max(mvpCount, awardCounts.mvp)}</span>
             </div>
             <div className="pt-4 border-t border-gray-200">
               <div className="flex items-center justify-between">

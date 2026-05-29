@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Match, Goal, SaveEntry, Player } from '../../types';
+import { Match, Goal, SaveEntry, Player, MatchAwards, MatchRsvpStatus } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
 import {
@@ -23,6 +23,8 @@ import {
   Shield,
   Copy,
   Mail,
+  Award,
+  Pencil,
 } from 'lucide-react';
 import {
   format,
@@ -44,6 +46,7 @@ import {
   sendMatchScheduleEmails,
   sendTeamAssignmentEmails,
 } from '../../lib/teamNotifications';
+import { DEFAULT_MATCH_AWARDS, getAwardWinners, getResolvedMatchAwards } from '../../lib/matchAwards';
 import { getSavePoints, getSuggestedMvpId } from '../../lib/playerStats';
 function getMatchRsvpUrl(matchId: string) {
   return `${window.location.origin}${window.location.pathname}?rsvp=1&match=${encodeURIComponent(matchId)}`;
@@ -404,6 +407,17 @@ function CreateMatchModal({ onClose, onSave }: CreateMatchModalProps) {
   const [time, setTime] = useState('');
   const [location, setLocation] = useState('');
   const [notes, setNotes] = useState('');
+  const [awardTitles, setAwardTitles] = useState<MatchAwards>(DEFAULT_MATCH_AWARDS);
+
+  const updateAwardTitle = (key: keyof MatchAwards, title: string) => {
+    setAwardTitles((current) => ({
+      ...current,
+      [key]: {
+        ...current[key],
+        title,
+      },
+    }));
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -423,6 +437,7 @@ function CreateMatchModal({ onClose, onSave }: CreateMatchModalProps) {
       status: 'scheduled',
       teamA: { name: 'Team A', playerIds: [] },
       teamB: { name: 'Team B', playerIds: [] },
+      awards: getResolvedMatchAwards(awardTitles),
     });
   };
 
@@ -475,6 +490,31 @@ function CreateMatchModal({ onClose, onSave }: CreateMatchModalProps) {
             rows={3}
             placeholder="Anything else worth noting…"
           />
+        </div>
+        <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4 space-y-4">
+          <div>
+            <h3 className="font-bold">Weekly Awards</h3>
+            <p className="text-sm text-gray-500">Set the title for each award before the match.</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {([
+              ['scorer', 'Top scorer award'],
+              ['assist', 'Top assist award'],
+              ['goalkeeper', 'Goalkeeper award'],
+              ['mvp', 'Best player award'],
+            ] as const).map(([key, label]) => (
+              <div key={key}>
+                <label className="field-label">{label}</label>
+                <input
+                  type="text"
+                  value={awardTitles[key].title}
+                  onChange={(e) => updateAwardTitle(key, e.target.value)}
+                  className="field-input"
+                  required
+                />
+              </div>
+            ))}
+          </div>
         </div>
       </form>
     </ModalShell>
@@ -773,8 +813,8 @@ interface MatchDetailsModalProps {
 }
 
 function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) {
-  const { players, goals } = useData();
-  const [view, setView] = useState<'details' | 'teams' | 'result'>('details');
+  const { players, goals, updateMatch } = useData();
+  const [view, setView] = useState<'details' | 'teams' | 'result' | 'awards'>('details');
   const [sendingInvites, setSendingInvites] = useState(false);
 
   const teamAPlayers = players.filter((p) => match.teamA.playerIds.includes(p.id));
@@ -783,11 +823,24 @@ function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) 
     .filter((goal) => goal.matchId === match.id)
     .sort((a, b) => (a.minute ?? 999) - (b.minute ?? 999));
   const mvp = match.mvpId ? players.find((player) => player.id === match.mvpId) : null;
+  const awards = getResolvedMatchAwards(match.awards, players);
   const rsvpCounts = {
     in: match.rsvps?.filter((entry) => entry.status === 'in').length ?? 0,
     maybe: match.rsvps?.filter((entry) => entry.status === 'maybe').length ?? 0,
     out: match.rsvps?.filter((entry) => entry.status === 'out').length ?? 0,
   };
+  const rsvpPlayers: Record<MatchRsvpStatus, Player[]> = {
+    in: [],
+    maybe: [],
+    out: [],
+  };
+
+  (match.rsvps ?? []).forEach((entry) => {
+    const player = players.find((candidate) => candidate.id === entry.playerId);
+    if (player) {
+      rsvpPlayers[entry.status].push(player);
+    }
+  });
 
   const copyRsvpLink = async () => {
     try {
@@ -825,6 +878,19 @@ function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) 
     return <RecordResultModal match={match} onClose={onClose} onBack={() => setView('details')} />;
   }
 
+  if (view === 'awards') {
+    return (
+      <EditAwardsModal
+        match={match}
+        onClose={onClose}
+        onBack={() => setView('details')}
+        onSave={async (awards) => {
+          await updateMatch(match.id, { awards });
+        }}
+      />
+    );
+  }
+
   const isCompleted = match.status === 'completed';
 
   return (
@@ -853,6 +919,10 @@ function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) 
                   <button onClick={() => setView('teams')} className="btn-secondary flex-1 inline-flex items-center justify-center gap-2">
                     <ArrowRightLeft className="w-4 h-4" />
                     Teams
+                  </button>
+                  <button onClick={() => setView('awards')} className="btn-secondary flex-1 inline-flex items-center justify-center gap-2">
+                    <Pencil className="w-4 h-4" />
+                    Edit Awards
                   </button>
                 </>
               )}
@@ -897,9 +967,9 @@ function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) 
               )}
             </div>
             <div className="grid grid-cols-3 gap-3 mt-4">
-              <RsvpCountPill label="In" value={rsvpCounts.in} accent="text-emerald-300" />
-              <RsvpCountPill label="Maybe" value={rsvpCounts.maybe} accent="text-amber-300" />
-              <RsvpCountPill label="Out" value={rsvpCounts.out} accent="text-rose-300" />
+              <RsvpCountPill label="In" value={rsvpCounts.in} accent="text-emerald-300" players={rsvpPlayers.in} />
+              <RsvpCountPill label="Maybe" value={rsvpCounts.maybe} accent="text-amber-300" players={rsvpPlayers.maybe} />
+              <RsvpCountPill label="Out" value={rsvpCounts.out} accent="text-rose-300" players={rsvpPlayers.out} />
             </div>
           </div>
         )}
@@ -922,6 +992,47 @@ function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) 
               <Users className="w-3.5 h-3.5" />
               {teamBPlayers.length} players
             </span>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+          <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+            <div>
+              <h3 className="font-bold">Weekly Awards</h3>
+              <p className="text-sm text-gray-500">
+                {isCompleted ? 'Winners were assigned automatically from the recorded result.' : 'These titles will be awarded automatically when the result is recorded.'}
+              </p>
+            </div>
+            {isAdmin && match.status === 'scheduled' && (
+              <button onClick={() => setView('awards')} className="btn-secondary inline-flex items-center gap-2">
+                <Pencil className="w-4 h-4" />
+                Edit Titles
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {([
+              ['scorer', 'Scorer'],
+              ['assist', 'Assist'],
+              ['goalkeeper', 'Goalkeeper'],
+              ['mvp', 'Best Player'],
+            ] as const).map(([key, fallbackLabel]) => {
+              const winner = awards[key].winnerId
+                ? players.find((player) => player.id === awards[key].winnerId)
+                : null;
+
+              return (
+                <div key={key} className="rounded-xl border border-white/5 bg-black/20 p-4">
+                  <p className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold mb-1">
+                    {fallbackLabel}
+                  </p>
+                  <p className="font-medium text-white">{awards[key].title}</p>
+                  <p className="text-sm text-gray-400 mt-2">
+                    {winner ? winner.name : isCompleted ? 'No winner assigned' : 'Waiting for result'}
+                  </p>
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -1064,11 +1175,42 @@ function SquadPanel({ title, variant, players }: { title: string; variant: 'a' |
   );
 }
 
-function RsvpCountPill({ label, value, accent }: { label: string; value: number; accent: string }) {
+function RsvpCountPill({ label, value, accent, players }: { label: string; value: number; accent: string; players: Player[] }) {
+  const visiblePlayers = players.slice(0, 4);
+  const overflowCount = players.length - visiblePlayers.length;
+
   return (
-    <div className="rounded-lg border border-white/5 bg-black/20 p-3 text-center">
+    <div className="rounded-lg border border-white/5 bg-black/20 p-3 text-center min-h-[112px] flex flex-col justify-between">
       <p className="text-xs uppercase tracking-wider text-gray-500 mb-1">{label}</p>
       <p className={`text-xl font-bold ${accent}`}>{value}</p>
+      <div className="mt-3 flex items-center justify-center min-h-8">
+        {visiblePlayers.length > 0 ? (
+          <div className="flex items-center justify-center">
+            {visiblePlayers.map((player, index) => (
+              <div
+                key={player.id}
+                className={`relative h-8 w-8 overflow-hidden rounded-full border border-[#111827] bg-white/10 ${index > 0 ? '-ml-2.5' : ''}`}
+                title={player.name}
+              >
+                {player.avatar ? (
+                  <img src={player.avatar} alt={player.name} className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-[11px] font-bold text-white/80">
+                    {player.name.charAt(0).toUpperCase()}
+                  </div>
+                )}
+              </div>
+            ))}
+            {overflowCount > 0 && (
+              <div className="-ml-2.5 flex h-8 w-8 items-center justify-center rounded-full border border-[#111827] bg-white/10 text-[11px] font-semibold text-white/80">
+                +{overflowCount}
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-600">No replies</p>
+        )}
+      </div>
     </div>
   );
 }
@@ -1083,6 +1225,82 @@ interface TeamAssignmentModalProps {
   onBack: () => void;
 }
 
+interface EditAwardsModalProps {
+  match: Match;
+  onClose: () => void;
+  onBack: () => void;
+  onSave: (awards: MatchAwards) => Promise<void>;
+}
+
+function EditAwardsModal({ match, onClose, onBack, onSave }: EditAwardsModalProps) {
+  const [awardTitles, setAwardTitles] = useState<MatchAwards>(getResolvedMatchAwards(match.awards));
+  const [saving, setSaving] = useState(false);
+
+  const updateAwardTitle = (key: keyof MatchAwards, title: string) => {
+    setAwardTitles((current) => ({
+      ...current,
+      [key]: {
+        ...current[key],
+        title,
+      },
+    }));
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await onSave(getResolvedMatchAwards(awardTitles));
+      toast.success('Award titles updated');
+      onClose();
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to update award titles');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <ModalShell
+      title="Edit Weekly Awards"
+      subtitle="Adjust award titles after the match has been created."
+      onClose={onClose}
+      maxWidth="38rem"
+      footer={
+        <>
+          <button onClick={onBack} className="btn-secondary inline-flex items-center gap-2">
+            <ChevronLeft className="w-4 h-4" />
+            Back
+          </button>
+          <button onClick={handleSave} disabled={saving} className="btn-primary flex-1 py-2.5 disabled:opacity-60">
+            {saving ? 'Saving…' : 'Save Awards'}
+          </button>
+        </>
+      }
+    >
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {([
+          ['scorer', 'Top scorer award'],
+          ['assist', 'Top assist award'],
+          ['goalkeeper', 'Goalkeeper award'],
+          ['mvp', 'Best player award'],
+        ] as const).map(([key, label]) => (
+          <div key={key}>
+            <label className="field-label">{label}</label>
+            <input
+              type="text"
+              value={awardTitles[key].title}
+              onChange={(e) => updateAwardTitle(key, e.target.value)}
+              className="field-input"
+              required
+            />
+          </div>
+        ))}
+      </div>
+    </ModalShell>
+  );
+}
+
 function TeamAssignmentModal({ match, onClose, onBack }: TeamAssignmentModalProps) {
   const { players, updateMatch } = useData();
   const [teamA, setTeamA] = useState<string[]>(match.teamA.playerIds);
@@ -1090,18 +1308,17 @@ function TeamAssignmentModal({ match, onClose, onBack }: TeamAssignmentModalProp
   const [shuffling, setShuffling] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  const rsvpPlayerIds = new Set((match.rsvps ?? []).map((entry) => entry.playerId));
   const checkedInPlayerIds = new Set(
     (match.rsvps ?? [])
       .filter((entry) => entry.status === 'in')
       .map((entry) => entry.playerId)
   );
-  const hasRsvpPool = checkedInPlayerIds.size > 0;
   const assignedPlayers = [...teamA, ...teamB];
   const availablePlayers = players.filter(
     (p) =>
       p.status === 'active'
       && !assignedPlayers.includes(p.id)
-      && (!hasRsvpPool || checkedInPlayerIds.has(p.id))
   );
 
   const moveToTeamA = (playerId: string) => {
@@ -1125,14 +1342,13 @@ function TeamAssignmentModal({ match, onClose, onBack }: TeamAssignmentModalProp
     setTeamB([]);
     setTimeout(() => {
       const pool = players.filter((p) => p.status === 'active').map((p) => p.id);
-      const eligiblePool = hasRsvpPool ? pool.filter((id) => checkedInPlayerIds.has(id)) : pool;
-      for (let i = eligiblePool.length - 1; i > 0; i--) {
+      for (let i = pool.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
-        [eligiblePool[i], eligiblePool[j]] = [eligiblePool[j], eligiblePool[i]];
+        [pool[i], pool[j]] = [pool[j], pool[i]];
       }
-      const half = Math.ceil(eligiblePool.length / 2);
-      setTeamA(eligiblePool.slice(0, half));
-      setTeamB(eligiblePool.slice(half));
+      const half = Math.ceil(pool.length / 2);
+      setTeamA(pool.slice(0, half));
+      setTeamB(pool.slice(half));
       setTimeout(() => setShuffling(false), 700);
     }, 280);
   };
@@ -1201,6 +1417,8 @@ function TeamAssignmentModal({ match, onClose, onBack }: TeamAssignmentModalProp
   const renderChip = (playerId: string, side: 'A' | 'B' | 'available') => {
     const player = players.find((p) => p.id === playerId);
     if (!player) return null;
+    const isCheckedIn = checkedInPlayerIds.has(playerId);
+    const hasRsvp = rsvpPlayerIds.has(playerId);
     return (
       <motion.div
         key={playerId}
@@ -1212,13 +1430,26 @@ function TeamAssignmentModal({ match, onClose, onBack }: TeamAssignmentModalProp
         transition={chipSpring}
         whileHover={{ scale: 1.03, y: -2 }}
         whileTap={{ scale: 0.97 }}
-        className="player-chip"
+        className={`player-chip ${isCheckedIn ? 'ring-1 ring-emerald-400/50 bg-emerald-500/[0.08]' : hasRsvp ? 'ring-1 ring-amber-400/40 bg-amber-500/[0.06]' : ''}`}
       >
-        <motion.span layout="position" className="font-medium flex-1">
-          {player.name}
-        </motion.span>
+        <div className="flex min-w-0 flex-1 items-center gap-2 flex-wrap">
+          <motion.span layout="position" className="font-medium min-w-0 flex-1 break-words">
+            {player.name}
+          </motion.span>
+          {hasRsvp && (
+            <span
+              className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
+                isCheckedIn
+                  ? 'bg-emerald-500/15 text-emerald-300'
+                  : 'bg-amber-500/15 text-amber-300'
+              }`}
+            >
+              {isCheckedIn ? 'RSVP In' : 'RSVP'}
+            </span>
+          )}
+        </div>
         {side === 'available' ? (
-          <div className="flex gap-1">
+          <div className="flex shrink-0 gap-1 self-start">
             <motion.button
               onClick={() => moveToTeamA(playerId)}
               whileHover={{ scale: 1.1 }}
@@ -1283,7 +1514,7 @@ function TeamAssignmentModal({ match, onClose, onBack }: TeamAssignmentModalProp
   return (
     <ModalShell
       title="Team Assignment"
-      subtitle={`${assignedPlayers.length} assigned · ${availablePlayers.length} available${hasRsvpPool ? ' · RSVP in only' : ''}`}
+      subtitle={`${assignedPlayers.length} assigned · ${availablePlayers.length} available · RSVP players highlighted`}
       onClose={onClose}
       maxWidth="60rem"
       footer={
@@ -1458,6 +1689,15 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
   const suggestedMvp = suggestedMvpId
     ? players.find((player) => player.id === suggestedMvpId)
     : null;
+  const suggestedAwards = getAwardWinners({
+    awards: match.awards,
+    goals,
+    saves: Object.entries(saves)
+      .map(([playerId, total]) => ({ playerId, saves: total }))
+      .filter((entry) => entry.saves > 0),
+    suggestedMvpId,
+    players,
+  });
 
   const addGoalRow = (team: 'A' | 'B') => {
     setGoals([...goals, { scorerId: '', assistId: undefined, team, minute: undefined }]);
@@ -1543,7 +1783,7 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
   return (
     <ModalShell
       title={match.status === 'completed' ? 'Edit Result' : 'Record Result'}
-      subtitle="Set final score, goalscorers, and goalkeeper saves."
+      subtitle="Set final score, goalscorers, saves, and let the weekly awards auto-assign."
       onClose={onClose}
       maxWidth="48rem"
       footer={
@@ -1631,6 +1871,35 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
               </div>
             </div>
             <span className="btn-pill team-a pointer-events-none">MVP</span>
+          </div>
+        </div>
+
+        <div className="mb-6 rounded-xl border border-white/5 bg-white/[0.02] p-4">
+          <div className="mb-3">
+            <h3 className="font-bold">Award Preview</h3>
+            <p className="text-sm text-gray-500">These update live as you enter goals and saves.</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {([
+              ['scorer', 'Scorer'],
+              ['assist', 'Assist'],
+              ['goalkeeper', 'Goalkeeper'],
+              ['mvp', 'Best Player'],
+            ] as const).map(([key, fallbackLabel]) => {
+              const winner = suggestedAwards[key].winnerId
+                ? players.find((player) => player.id === suggestedAwards[key].winnerId)
+                : null;
+
+              return (
+                <div key={key} className="rounded-xl border border-white/5 bg-black/20 p-3">
+                  <p className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">
+                    {fallbackLabel}
+                  </p>
+                  <p className="font-medium">{suggestedAwards[key].title}</p>
+                  <p className="text-sm text-gray-400 mt-1">{winner?.name ?? 'No winner yet'}</p>
+                </div>
+              );
+            })}
           </div>
         </div>
 

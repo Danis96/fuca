@@ -3,7 +3,8 @@ import { Player } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
 import { uploadToImageKit } from '../../lib/imagekit';
-import { Plus, Edit, Trash2, User, Trophy, Target, TrendingUp, Upload, X } from 'lucide-react';
+import { getPlayerAwardCounts } from '../../lib/matchAwards';
+import { Plus, Edit, Trash2, User, Trophy, Target, TrendingUp, Upload, X, Award, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface PlayersScreenProps {
@@ -12,7 +13,7 @@ interface PlayersScreenProps {
 
 export function PlayersScreen({ onSelectPlayer }: PlayersScreenProps) {
   const { isAdmin } = useAuth();
-  const { players, addPlayer, updatePlayer, deletePlayer } = useData();
+  const { players, matches, addPlayer, updatePlayer, deletePlayer } = useData();
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
 
@@ -52,101 +53,122 @@ export function PlayersScreen({ onSelectPlayer }: PlayersScreenProps) {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {players.map((player) => (
-            <div
-              key={player.id}
-              className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition cursor-pointer"
-              onClick={() => onSelectPlayer?.(player.id)}
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center overflow-hidden">
-                    {player.avatar ? (
-                      <img src={player.avatar} alt={player.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <User className="w-6 h-6 text-green-600" />
-                    )}
+          {players.map((player) => {
+            const awardCounts = getPlayerAwardCounts(matches, player.id);
+            const totalAwards =
+              awardCounts.scorer + awardCounts.assist + awardCounts.goalkeeper + awardCounts.mvp;
+
+            return (
+              <div
+                key={player.id}
+                className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition cursor-pointer"
+                onClick={() => onSelectPlayer?.(player.id)}
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center overflow-hidden">
+                      {player.avatar ? (
+                        <img src={player.avatar} alt={player.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <User className="w-6 h-6 text-green-600" />
+                      )}
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-gray-900">{player.name}</h3>
+                      {player.nickname && (
+                        <p className="text-sm text-gray-500">"{player.nickname}"</p>
+                      )}
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-bold text-gray-900">{player.name}</h3>
-                    {player.nickname && (
-                      <p className="text-sm text-gray-500">"{player.nickname}"</p>
-                    )}
+                  {isAdmin && (
+                    <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => setEditingPlayer(player)}
+                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeletePlayer(player.id)}
+                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2 mb-4">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-600">Position</span>
+                    <span className="font-medium text-gray-900">{player.position || 'N/A'}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-600">Status</span>
+                    <span
+                      className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        player.status === 'active'
+                          ? 'bg-green-100 text-green-700'
+                          : 'bg-gray-100 text-gray-700'
+                      }`}
+                    >
+                      {player.status}
+                    </span>
+                  </div>
+                  {totalAwards > 0 && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Weekly awards</span>
+                      <span className="font-medium text-amber-600">{totalAwards}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-3 gap-4 pt-4 border-t border-gray-200">
+                  <div className="text-center">
+                    <div className="flex items-center justify-center mb-1">
+                      <Trophy className="w-4 h-4 text-yellow-600" />
+                    </div>
+                    <p className="text-2xl font-bold text-gray-900">{player.totalGoals}</p>
+                    <p className="text-xs text-gray-500">Goals</p>
+                  </div>
+                  <div className="text-center">
+                    <div className="flex items-center justify-center mb-1">
+                      <Target className="w-4 h-4 text-blue-600" />
+                    </div>
+                    <p className="text-2xl font-bold text-gray-900">{player.totalAssists}</p>
+                    <p className="text-xs text-gray-500">Assists</p>
+                  </div>
+                  <div className="text-center">
+                    <div className="flex items-center justify-center mb-1">
+                      <TrendingUp className="w-4 h-4 text-green-600" />
+                    </div>
+                    <p className="text-2xl font-bold text-gray-900">{player.matchesPlayed}</p>
+                    <p className="text-xs text-gray-500">Matches</p>
                   </div>
                 </div>
-                {isAdmin && (
-                  <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      onClick={() => setEditingPlayer(player)}
-                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDeletePlayer(player.id)}
-                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+
+                {player.matchesPlayed > 0 && (
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Win Rate</span>
+                      <span className="font-medium text-green-600">
+                        {((player.wins / player.matchesPlayed) * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {totalAwards > 0 && (
+                  <div className="mt-4 pt-4 border-t border-gray-200 grid grid-cols-2 gap-2 text-xs">
+                    <AwardChip icon={Trophy} label="Baller" value={awardCounts.scorer} tone="text-yellow-700 bg-yellow-50" />
+                    <AwardChip icon={Target} label="Wizard" value={awardCounts.assist} tone="text-blue-700 bg-blue-50" />
+                    <AwardChip icon={Shield} label="Brick Wall" value={awardCounts.goalkeeper} tone="text-cyan-700 bg-cyan-50" />
+                    <AwardChip icon={Award} label="Menace" value={awardCounts.mvp} tone="text-emerald-700 bg-emerald-50" />
                   </div>
                 )}
               </div>
-
-              <div className="space-y-2 mb-4">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600">Position</span>
-                  <span className="font-medium text-gray-900">{player.position || 'N/A'}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600">Status</span>
-                  <span
-                    className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      player.status === 'active'
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-gray-100 text-gray-700'
-                    }`}
-                  >
-                    {player.status}
-                  </span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4 pt-4 border-t border-gray-200">
-                <div className="text-center">
-                  <div className="flex items-center justify-center mb-1">
-                    <Trophy className="w-4 h-4 text-yellow-600" />
-                  </div>
-                  <p className="text-2xl font-bold text-gray-900">{player.totalGoals}</p>
-                  <p className="text-xs text-gray-500">Goals</p>
-                </div>
-                <div className="text-center">
-                  <div className="flex items-center justify-center mb-1">
-                    <Target className="w-4 h-4 text-blue-600" />
-                  </div>
-                  <p className="text-2xl font-bold text-gray-900">{player.totalAssists}</p>
-                  <p className="text-xs text-gray-500">Assists</p>
-                </div>
-                <div className="text-center">
-                  <div className="flex items-center justify-center mb-1">
-                    <TrendingUp className="w-4 h-4 text-green-600" />
-                  </div>
-                  <p className="text-2xl font-bold text-gray-900">{player.matchesPlayed}</p>
-                  <p className="text-xs text-gray-500">Matches</p>
-                </div>
-              </div>
-
-              {player.matchesPlayed > 0 && (
-                <div className="mt-4 pt-4 border-t border-gray-200">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600">Win Rate</span>
-                    <span className="font-medium text-green-600">
-                      {((player.wins / player.matchesPlayed) * 100).toFixed(0)}%
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -191,6 +213,30 @@ export function PlayersScreen({ onSelectPlayer }: PlayersScreenProps) {
           }}
         />
       )}
+    </div>
+  );
+}
+
+function AwardChip({
+  icon: Icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: number;
+  tone: string;
+}) {
+  return (
+    <div className={`rounded-lg px-3 py-2 ${tone}`}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-1 font-medium">
+          <Icon className="w-3.5 h-3.5" />
+          {label}
+        </span>
+        <span className="font-bold">{value}</span>
+      </div>
     </div>
   );
 }
