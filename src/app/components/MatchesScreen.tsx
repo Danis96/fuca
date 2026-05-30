@@ -52,6 +52,13 @@ function getMatchRsvpUrl(matchId: string) {
   return `${window.location.origin}${window.location.pathname}?rsvp=1&match=${encodeURIComponent(matchId)}`;
 }
 
+function getMatchStartIso(date: Date, time: string) {
+  const [hours, minutes] = time.split(':').map((value) => Number.parseInt(value, 10));
+  const matchStart = new Date(date);
+  matchStart.setHours(Number.isFinite(hours) ? hours : 0, Number.isFinite(minutes) ? minutes : 0, 0, 0);
+  return matchStart.toISOString();
+}
+
 async function resendMatchInvites(match: Pick<Match, 'id' | 'date' | 'time' | 'location' | 'notes'>, players: Player[]) {
   const recipients = players
     .filter((player) => player.status === 'active')
@@ -67,6 +74,8 @@ async function resendMatchInvites(match: Pick<Match, 'id' | 'date' | 'time' | 'l
     location: match.location,
     notes: match.notes,
     rsvpUrl: getMatchRsvpUrl(match.id),
+    eventStartIso: getMatchStartIso(match.date, match.time),
+    eventTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     recipients,
   });
 }
