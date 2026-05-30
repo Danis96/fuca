@@ -17,3 +17,8 @@
   from = "/api/send-match-schedule"
   to = "/.netlify/functions/send-match-schedule"
   status = 200
+
+[[redirects]]
+  from = "/api/match-calendar.ics"
+  to = "/.netlify/functions/match-calendar"
+  status = 200

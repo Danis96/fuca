@@ -15,6 +15,12 @@ interface MatchScheduleRequestBody {
   recipients: MatchScheduleRecipient[];
 }
 
+interface HandlerEvent {
+  httpMethod?: string;
+  body?: string | null;
+  headers?: Record<string, string | undefined>;
+}
+
 function json(statusCode: number, body: Record<string, unknown>) {
   return {
     statusCode,
@@ -67,29 +73,33 @@ function getCalendarDescription(payload: MatchScheduleRequestBody) {
     .join('\n\n');
 }
 
-function buildGoogleCalendarUrl(payload: MatchScheduleRequestBody) {
-  if (!payload.eventStartIso) return null;
+function getRequestOrigin(event: HandlerEvent) {
+  const proto = event.headers?.['x-forwarded-proto'] ?? 'https';
+  const host = event.headers?.['x-forwarded-host'] ?? event.headers?.host;
+  return host ? `${proto}://${host}` : process.env.URL ?? null;
+}
 
-  const start = new Date(payload.eventStartIso);
-  if (Number.isNaN(start.getTime())) return null;
-
-  const end = new Date(start.getTime() + 90 * 60 * 1000);
-  const eventTitle = getCalendarEventTitle();
-  const eventDescription = getCalendarDescription(payload);
+function buildCalendarDownloadUrl(payload: MatchScheduleRequestBody, origin: string | null) {
+  if (!origin || !payload.eventStartIso) return null;
 
   const params = new URLSearchParams({
-    action: 'TEMPLATE',
-    text: eventTitle,
-    dates: `${formatCalendarUtc(start)}/${formatCalendarUtc(end)}`,
-    details: eventDescription,
+    matchId: payload.matchId,
+    date: payload.date,
+    time: payload.time,
     location: payload.location,
+    rsvpUrl: payload.rsvpUrl,
+    eventStartIso: payload.eventStartIso,
   });
 
-  if (payload.eventTimeZone?.trim()) {
-    params.set('ctz', payload.eventTimeZone.trim());
+  if (payload.notes?.trim()) {
+    params.set('notes', payload.notes.trim());
   }
 
-  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+  if (payload.eventTimeZone?.trim()) {
+    params.set('eventTimeZone', payload.eventTimeZone.trim());
+  }
+
+  return `${origin}/api/match-calendar.ics?${params.toString()}`;
 }
 
 function buildCalendarInvite(payload: MatchScheduleRequestBody) {
@@ -138,7 +148,7 @@ async function getProviderErrorDetails(response: Response) {
   }
 }
 
-export const handler = async (event: { httpMethod?: string; body?: string | null }) => {
+export const handler = async (event: HandlerEvent) => {
   if (event.httpMethod !== 'POST') {
     return json(405, { error: 'Method not allowed' });
   }
@@ -176,8 +186,8 @@ export const handler = async (event: { httpMethod?: string; body?: string | null
   const safeLocation = escapeHtml(payload.location);
   const safeRsvpUrl = escapeHtml(payload.rsvpUrl);
   const safeNotes = payload.notes?.trim() ? escapeHtml(payload.notes.trim()) : '';
-  const googleCalendarUrl = buildGoogleCalendarUrl(payload);
-  const safeGoogleCalendarUrl = googleCalendarUrl ? escapeHtml(googleCalendarUrl) : '';
+  const calendarDownloadUrl = buildCalendarDownloadUrl(payload, getRequestOrigin(event));
+  const safeCalendarDownloadUrl = calendarDownloadUrl ? escapeHtml(calendarDownloadUrl) : '';
   const calendarInvite = buildCalendarInvite(payload);
   const response = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
@@ -210,20 +220,20 @@ export const handler = async (event: { httpMethod?: string; body?: string | null
               RSVP for this match
             </a>
           </p>
-          ${safeGoogleCalendarUrl ? `
+          ${safeCalendarDownloadUrl ? `
           <p>
             <a
-              href="${safeGoogleCalendarUrl}"
+              href="${safeCalendarDownloadUrl}"
               style="display: inline-block; padding: 12px 18px; border-radius: 999px; background: #2563eb; color: #ffffff; text-decoration: none; font-weight: 700;"
             >
-              Add to Google Calendar
+              Add to calendar
             </a>
           </p>
-          <p>An .ics calendar invite is also attached for Apple Calendar and Outlook.</p>
+          <p>This opens a universal .ics invite for Apple Calendar, Outlook, Google Calendar, and others.</p>
           ` : ''}
           <p>If the button does not work, open this link:</p>
           <p><a href="${safeRsvpUrl}">${safeRsvpUrl}</a></p>
-          ${safeGoogleCalendarUrl ? `<p>Calendar link: <a href="${safeGoogleCalendarUrl}">${safeGoogleCalendarUrl}</a></p>` : ''}
+          ${safeCalendarDownloadUrl ? `<p>Calendar file: <a href="${safeCalendarDownloadUrl}">${safeCalendarDownloadUrl}</a></p>` : ''}
           <p>Sign in with your player account to respond.</p>
         </div>
       `,
@@ -237,7 +247,7 @@ export const handler = async (event: { httpMethod?: string; body?: string | null
         payload.notes?.trim() ? `Notes: ${payload.notes.trim()}` : '',
         '',
         `RSVP here: ${payload.rsvpUrl}`,
-        googleCalendarUrl ? `Add to Google Calendar: ${googleCalendarUrl}` : '',
+        calendarDownloadUrl ? `Add to calendar: ${calendarDownloadUrl}` : '',
         calendarInvite ? 'An .ics calendar invite is attached for Apple Calendar and Outlook.' : '',
         '',
         'Sign in with your player account to respond.',
