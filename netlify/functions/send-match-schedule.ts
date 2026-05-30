@@ -10,6 +10,8 @@ interface MatchScheduleRequestBody {
   location: string;
   notes?: string;
   rsvpUrl: string;
+  eventStartIso?: string;
+  eventTimeZone?: string;
   recipients: MatchScheduleRecipient[];
 }
 
@@ -28,6 +30,95 @@ function escapeHtml(value: string) {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
+}
+
+function escapeCalendarText(value: string) {
+  return value
+    .replaceAll('\\', '\\\\')
+    .replaceAll('\r\n', '\\n')
+    .replaceAll('\n', '\\n')
+    .replaceAll(';', '\\;')
+    .replaceAll(',', '\\,');
+}
+
+function formatCalendarUtc(date: Date) {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const hours = String(date.getUTCHours()).padStart(2, '0');
+  const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+  const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+  return `${year}${month}${day}T${hours}${minutes}${seconds}Z`;
+}
+
+function getCalendarEventTitle() {
+  return 'Fuca Sunday League Match';
+}
+
+function getCalendarDescription(payload: MatchScheduleRequestBody) {
+  return [
+    'Fuca Sunday League fixture.',
+    `Kickoff: ${payload.date} at ${payload.time}`,
+    `Venue: ${payload.location}`,
+    payload.notes?.trim() ? `Notes: ${payload.notes.trim()}` : '',
+    `RSVP: ${payload.rsvpUrl}`,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+function buildGoogleCalendarUrl(payload: MatchScheduleRequestBody) {
+  if (!payload.eventStartIso) return null;
+
+  const start = new Date(payload.eventStartIso);
+  if (Number.isNaN(start.getTime())) return null;
+
+  const end = new Date(start.getTime() + 90 * 60 * 1000);
+  const eventTitle = getCalendarEventTitle();
+  const eventDescription = getCalendarDescription(payload);
+
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: eventTitle,
+    dates: `${formatCalendarUtc(start)}/${formatCalendarUtc(end)}`,
+    details: eventDescription,
+    location: payload.location,
+  });
+
+  if (payload.eventTimeZone?.trim()) {
+    params.set('ctz', payload.eventTimeZone.trim());
+  }
+
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
+function buildCalendarInvite(payload: MatchScheduleRequestBody) {
+  if (!payload.eventStartIso) return null;
+
+  const start = new Date(payload.eventStartIso);
+  if (Number.isNaN(start.getTime())) return null;
+
+  const end = new Date(start.getTime() + 90 * 60 * 1000);
+  const eventTitle = getCalendarEventTitle();
+  const eventDescription = getCalendarDescription(payload);
+
+  return [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Fuca//Match Schedule//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'BEGIN:VEVENT',
+    `UID:match-${payload.matchId}@fuca`,
+    `DTSTAMP:${formatCalendarUtc(new Date())}`,
+    `DTSTART:${formatCalendarUtc(start)}`,
+    `DTEND:${formatCalendarUtc(end)}`,
+    `SUMMARY:${escapeCalendarText(eventTitle)}`,
+    `LOCATION:${escapeCalendarText(payload.location)}`,
+    `DESCRIPTION:${escapeCalendarText(eventDescription)}`,
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].join('\r\n');
 }
 
 async function getProviderErrorDetails(response: Response) {
@@ -85,6 +176,9 @@ export const handler = async (event: { httpMethod?: string; body?: string | null
   const safeLocation = escapeHtml(payload.location);
   const safeRsvpUrl = escapeHtml(payload.rsvpUrl);
   const safeNotes = payload.notes?.trim() ? escapeHtml(payload.notes.trim()) : '';
+  const googleCalendarUrl = buildGoogleCalendarUrl(payload);
+  const safeGoogleCalendarUrl = googleCalendarUrl ? escapeHtml(googleCalendarUrl) : '';
+  const calendarInvite = buildCalendarInvite(payload);
   const response = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
     headers: {
@@ -116,8 +210,20 @@ export const handler = async (event: { httpMethod?: string; body?: string | null
               RSVP for this match
             </a>
           </p>
+          ${safeGoogleCalendarUrl ? `
+          <p>
+            <a
+              href="${safeGoogleCalendarUrl}"
+              style="display: inline-block; padding: 12px 18px; border-radius: 999px; background: #2563eb; color: #ffffff; text-decoration: none; font-weight: 700;"
+            >
+              Add to Google Calendar
+            </a>
+          </p>
+          <p>An .ics calendar invite is also attached for Apple Calendar and Outlook.</p>
+          ` : ''}
           <p>If the button does not work, open this link:</p>
           <p><a href="${safeRsvpUrl}">${safeRsvpUrl}</a></p>
+          ${safeGoogleCalendarUrl ? `<p>Calendar link: <a href="${safeGoogleCalendarUrl}">${safeGoogleCalendarUrl}</a></p>` : ''}
           <p>Sign in with your player account to respond.</p>
         </div>
       `,
@@ -131,11 +237,23 @@ export const handler = async (event: { httpMethod?: string; body?: string | null
         payload.notes?.trim() ? `Notes: ${payload.notes.trim()}` : '',
         '',
         `RSVP here: ${payload.rsvpUrl}`,
+        googleCalendarUrl ? `Add to Google Calendar: ${googleCalendarUrl}` : '',
+        calendarInvite ? 'An .ics calendar invite is attached for Apple Calendar and Outlook.' : '',
         '',
         'Sign in with your player account to respond.',
       ]
         .filter(Boolean)
         .join('\n'),
+      ...(calendarInvite
+        ? {
+            attachment: [
+              {
+                content: Buffer.from(calendarInvite, 'utf8').toString('base64'),
+                name: 'fuca-sunday-league-match.ics',
+              },
+            ],
+          }
+        : {}),
       messageVersions: validRecipients.map((recipient) => ({
         to: [
           {

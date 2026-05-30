@@ -32,6 +32,8 @@ export interface MatchScheduleEmailPayload {
   location: string;
   notes?: string;
   rsvpUrl: string;
+  eventStartIso?: string;
+  eventTimeZone?: string;
   recipients: MatchScheduleEmailRecipient[];
 }
 
