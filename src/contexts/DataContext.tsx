@@ -107,6 +107,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           location: data.location ?? '',
           notes: data.notes ?? '',
           status: data.status ?? 'scheduled',
+          kickoffAtIso: data.kickoffAtIso ?? undefined,
+          eventTimeZone: data.eventTimeZone ?? undefined,
           teamA: {
             name: data.teamA?.name ?? 'Team A',
             playerIds: data.teamA?.playerIds ?? [],
