@@ -822,8 +822,8 @@ interface MatchDetailsModalProps {
 }
 
 function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) {
-  const { players, goals, updateMatch } = useData();
-  const [view, setView] = useState<'details' | 'teams' | 'result' | 'awards'>('details');
+  const { players, goals, updateMatch, deleteGoal } = useData();
+  const [view, setView] = useState<'details' | 'teams' | 'result' | 'awards' | 'goal'>('details');
   const [sendingInvites, setSendingInvites] = useState(false);
 
   const teamAPlayers = players.filter((p) => match.teamA.playerIds.includes(p.id));
@@ -858,6 +858,16 @@ function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) 
     } catch (error) {
       console.error(error);
       toast.error('Failed to copy RSVP link');
+    }
+  };
+
+  const handleDeleteGoal = async (goalId: string) => {
+    try {
+      await deleteGoal(goalId);
+      toast.success('Goal removed');
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to remove goal');
     }
   };
 
@@ -900,6 +910,16 @@ function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) 
     );
   }
 
+  if (view === 'goal') {
+    return (
+      <QuickGoalModal
+        match={match}
+        onClose={onClose}
+        onBack={() => setView('details')}
+      />
+    );
+  }
+
   const isCompleted = match.status === 'completed';
 
   return (
@@ -935,6 +955,12 @@ function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) 
                   </button>
                 </>
               )}
+              {match.status !== 'completed' && (
+                <button onClick={() => setView('goal')} className="btn-secondary flex-1 inline-flex items-center justify-center gap-2">
+                  <Plus className="w-4 h-4" />
+                  Log Goal
+                </button>
+              )}
               <button onClick={() => setView('result')} className="btn-primary flex-1 py-2.5 inline-flex items-center justify-center gap-2">
                 <ClipboardCheck className="w-4 h-4" />
                 {isCompleted ? 'Edit Result' : 'Record Result'}
@@ -958,6 +984,26 @@ function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) 
             </span>
           </div>
         </div>
+
+        {isAdmin && match.status !== 'completed' && (
+          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 className="font-bold mb-1">Sideline Goal Entry</h3>
+                <p className="text-sm text-emerald-100/70">
+                  Log scorer and assist while the match is live. Goals stay attached to this match and are reused when the final result is saved.
+                </p>
+              </div>
+              <button
+                onClick={() => setView('goal')}
+                className="btn-primary inline-flex w-full shrink-0 items-center justify-center gap-2 whitespace-nowrap px-4 py-2.5 sm:w-auto sm:self-start"
+              >
+                <Plus className="w-4 h-4" />
+                Log Goal
+              </button>
+            </div>
+          </div>
+        )}
 
         {match.status === 'scheduled' && (
           <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
@@ -1062,7 +1108,7 @@ function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) 
         </div>
         </div>
 
-        {isCompleted && (
+        {(matchGoals.length > 0 || isCompleted) && (
           <div>
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-bold">Match Events</h3>
@@ -1104,9 +1150,20 @@ function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) 
                       </p>
                       <p className="text-sm text-gray-500">Team {goal.team}</p>
                     </div>
-                    <span className="text-sm font-medium text-gray-300">
-                      {goal.minute !== undefined ? `${goal.minute}'` : '—'}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-300">
+                        {goal.minute !== undefined ? `${goal.minute}'` : '—'}
+                      </span>
+                      {isAdmin && match.status !== 'completed' && (
+                        <button
+                          onClick={() => handleDeleteGoal(goal.id)}
+                          className="btn-danger-soft"
+                          title="Delete goal"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -1305,6 +1362,220 @@ function EditAwardsModal({ match, onClose, onBack, onSave }: EditAwardsModalProp
             />
           </div>
         ))}
+      </div>
+    </ModalShell>
+  );
+}
+
+interface QuickGoalModalProps {
+  match: Match;
+  onClose: () => void;
+  onBack: () => void;
+}
+
+function QuickGoalModal({ match, onClose, onBack }: QuickGoalModalProps) {
+  const { players, goals, addGoal } = useData();
+  const [team, setTeam] = useState<'A' | 'B'>('A');
+  const [scorerId, setScorerId] = useState('');
+  const [assistId, setAssistId] = useState<string | undefined>(undefined);
+  const [saving, setSaving] = useState(false);
+
+  const teamAPlayers = players.filter((p) => match.teamA.playerIds.includes(p.id));
+  const teamBPlayers = players.filter((p) => match.teamB.playerIds.includes(p.id));
+  const teamPlayers = team === 'A' ? teamAPlayers : teamBPlayers;
+  const matchGoals = goals
+    .filter((goal) => goal.matchId === match.id)
+    .sort((a, b) => (a.createdAt?.getTime?.() ?? 0) - (b.createdAt?.getTime?.() ?? 0));
+
+  const scorerPlayer = scorerId ? players.find((player) => player.id === scorerId) ?? null : null;
+  const assistPlayer = assistId ? players.find((player) => player.id === assistId) ?? null : null;
+
+  const handleTeamChange = (nextTeam: 'A' | 'B') => {
+    setTeam(nextTeam);
+    setScorerId('');
+    setAssistId(undefined);
+  };
+
+  const handleSave = async () => {
+    if (!scorerId) {
+      toast.error('Pick a scorer');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await addGoal({
+        matchId: match.id,
+        scorerId,
+        assistId,
+        team,
+      });
+      toast.success('Goal logged');
+      setScorerId('');
+      setAssistId(undefined);
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to log goal');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const renderPlayerButton = (player: Player, kind: 'scorer' | 'assist') => {
+    const isSelected = kind === 'scorer' ? scorerId === player.id : assistId === player.id;
+    const disabled = kind === 'assist' && player.id === scorerId;
+
+    return (
+      <button
+        key={player.id}
+        type="button"
+        disabled={disabled}
+        onClick={() => {
+          if (kind === 'scorer') {
+            if (isSelected) {
+              setScorerId('');
+              if (assistId === player.id) setAssistId(undefined);
+              return;
+            }
+            setScorerId(player.id);
+            if (assistId === player.id) setAssistId(undefined);
+          } else {
+            if (isSelected) {
+              setAssistId(undefined);
+              return;
+            }
+            setAssistId(player.id);
+          }
+        }}
+        className={`rounded-2xl border px-3 py-3 text-left transition ${
+          isSelected
+            ? team === 'A'
+              ? 'border-emerald-400/50 bg-emerald-500/15 text-emerald-100'
+              : 'border-rose-400/50 bg-rose-500/15 text-rose-100'
+            : 'border-white/10 bg-white/[0.03] text-gray-200 hover:bg-white/[0.06]'
+        } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-medium text-sm leading-tight break-words">{player.name}</span>
+          {isSelected && <CheckCircle className="w-4 h-4 shrink-0" />}
+        </div>
+      </button>
+    );
+  };
+
+  return (
+    <ModalShell
+      title="Log Goal"
+      subtitle="Mobile-friendly goal entry for live sideline use."
+      onClose={onClose}
+      maxWidth="42rem"
+      footer={
+        <>
+          <button onClick={onBack} className="btn-secondary inline-flex items-center gap-2">
+            <ChevronLeft className="w-4 h-4" />
+            Back
+          </button>
+          <button onClick={onClose} className="btn-secondary">
+            Close
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="btn-primary flex-1 py-2.5 disabled:opacity-60"
+          >
+            {saving ? 'Saving…' : 'Save Goal'}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-5">
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => handleTeamChange('A')}
+            className={`rounded-2xl border px-4 py-4 text-left transition ${
+              team === 'A'
+                ? 'border-emerald-400/50 bg-emerald-500/15'
+                : 'border-white/10 bg-white/[0.03] hover:bg-white/[0.06]'
+            }`}
+          >
+            <p className="text-xs uppercase tracking-wider text-gray-400 font-semibold">Team</p>
+            <p className="mt-1 font-semibold">Team A</p>
+            <p className="text-sm text-gray-500">{teamAPlayers.length} players available</p>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleTeamChange('B')}
+            className={`rounded-2xl border px-4 py-4 text-left transition ${
+              team === 'B'
+                ? 'border-rose-400/50 bg-rose-500/15'
+                : 'border-white/10 bg-white/[0.03] hover:bg-white/[0.06]'
+            }`}
+          >
+            <p className="text-xs uppercase tracking-wider text-gray-400 font-semibold">Team</p>
+            <p className="mt-1 font-semibold">Team B</p>
+            <p className="text-sm text-gray-500">{teamBPlayers.length} players available</p>
+          </button>
+        </div>
+
+        <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-4 space-y-4">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <h3 className="font-bold">Scorer</h3>
+              <p className="text-sm text-gray-500">Tap the player who scored.</p>
+            </div>
+            {scorerPlayer && (
+              <span className={`btn-pill ${team === 'A' ? 'team-a' : 'team-b'} pointer-events-none`}>
+                {scorerPlayer.name}
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {teamPlayers.map((player) => renderPlayerButton(player, 'scorer'))}
+            {teamPlayers.length === 0 && (
+              <p className="text-sm text-gray-500 italic">No players assigned to this team.</p>
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-4 space-y-4">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <h3 className="font-bold">Assist</h3>
+              <p className="text-sm text-gray-500">Optional. Tap no assist if needed.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAssistId(undefined)}
+              className={`btn-pill ${assistId === undefined ? (team === 'A' ? 'team-a' : 'team-b') : ''}`}
+            >
+              No assist
+            </button>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {teamPlayers
+              .filter((player) => player.id !== scorerId)
+              .map((player) => renderPlayerButton(player, 'assist'))}
+            {teamPlayers.filter((player) => player.id !== scorerId).length === 0 && (
+              <p className="text-sm text-gray-500 italic">Only the scorer is available for this assist list.</p>
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-gray-200">Current selection</p>
+              <p className="text-sm text-gray-500">
+                Team {team} · {scorerPlayer?.name ?? 'no scorer yet'}
+                {assistId ? ` · assist ${assistPlayer?.name ?? 'selected'}` : ' · no assist'}
+              </p>
+            </div>
+            <span className="text-xs uppercase tracking-wider text-gray-500 font-semibold">
+              {matchGoals.length} logged
+            </span>
+          </div>
+        </div>
       </div>
     </ModalShell>
   );
