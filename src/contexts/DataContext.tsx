@@ -30,6 +30,9 @@ interface DataContextType {
   updateMatch: (id: string, data: Partial<Match>) => Promise<void>;
   deleteMatch: (id: string) => Promise<void>;
 
+  addGoal: (data: Omit<Goal, 'id' | 'createdAt'>) => Promise<string>;
+  deleteGoal: (id: string) => Promise<void>;
+
   recordResult: (
     matchId: string,
     teamAScore: number,
@@ -207,6 +210,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     await deleteDoc(doc(db, 'matches', id));
   };
 
+  const addGoal: DataContextType['addGoal'] = async (data) => {
+    const ref = await addDoc(collection(db, 'goals'), {
+      ...data,
+      createdAt: serverTimestamp(),
+    });
+    return ref.id;
+  };
+
+  const deleteGoal: DataContextType['deleteGoal'] = async (id) => {
+    await deleteDoc(doc(db, 'goals', id));
+  };
+
   const recordResult: DataContextType['recordResult'] = async (
     matchId,
     teamAScore,
@@ -352,6 +367,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         addMatch,
         updateMatch,
         deleteMatch,
+        addGoal,
+        deleteGoal,
         recordResult,
       }}
     >
