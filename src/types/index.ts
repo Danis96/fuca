@@ -37,6 +37,8 @@ export interface Match {
   location: string;
   notes?: string;
   status: 'scheduled' | 'completed' | 'cancelled';
+  kickoffAtIso?: string;
+  eventTimeZone?: string;
   teamA: TeamAssignment;
   teamB: TeamAssignment;
   rsvps?: MatchRsvp[];

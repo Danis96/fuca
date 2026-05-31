@@ -42,6 +42,17 @@ export interface MatchScheduleEmailResult {
   skippedCount: number;
 }
 
+export interface MatchReminderEmailPayload {
+  matchId: string;
+  force?: boolean;
+}
+
+export interface MatchReminderEmailResult {
+  sentCount: number;
+  skippedCount: number;
+  skippedReason?: string;
+}
+
 async function getErrorMessage(response: Response, fallback: string) {
   const errorText = await response.text();
 
@@ -87,6 +98,22 @@ export async function sendMatchScheduleEmails(payload: MatchScheduleEmailPayload
   }
 
   return (await response.json()) as MatchScheduleEmailResult;
+}
+
+export async function sendMatchReminderEmails(payload: MatchReminderEmailPayload): Promise<MatchReminderEmailResult> {
+  const response = await fetch('/api/send-match-reminder', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response, 'Failed to send match reminder emails'));
+  }
+
+  return (await response.json()) as MatchReminderEmailResult;
 }
 
 export function formatMatchEmailDate(date: Date): string {

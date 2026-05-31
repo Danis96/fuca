@@ -1013,11 +1013,20 @@ html.light {
   .match-details-footer-actions {
     width: 100%;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(11.5rem, 1fr));
     gap: 0.75rem;
   }
   .match-details-footer-actions > * {
     min-width: 0;
+  }
+
+  @media (min-width: 900px) {
+    .match-details-footer-actions {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    .match-details-footer-actions > .btn-primary:last-child {
+      grid-column: span 2;
+    }
   }
 
   /* ===== Form fields ===== */
