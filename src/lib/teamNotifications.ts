@@ -43,8 +43,23 @@ export interface MatchScheduleEmailResult {
 }
 
 export interface MatchReminderEmailPayload {
-  matchId: string;
+  matchId?: string;
   force?: boolean;
+  manual?: {
+    date: string;
+    time: string;
+    location: string;
+    countdownLabel: string;
+    notes?: string;
+    recipients: Array<{
+      email: string;
+      playerName: string;
+      teamName: string;
+      teammateList: string;
+      opponentTeamName: string;
+      opponentList: string;
+    }>;
+  };
 }
 
 export interface MatchReminderEmailResult {
