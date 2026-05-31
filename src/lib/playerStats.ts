@@ -34,7 +34,15 @@ export function buildPlayerStats(
     return statsById[playerId];
   };
 
+  const completedMatchIds = new Set(
+    matches
+      .filter((match) => match.status === 'completed')
+      .map((match) => match.id)
+  );
+
   for (const goal of goals) {
+    if (!completedMatchIds.has(goal.matchId)) continue;
+
     if (goal.scorerId) {
       ensureStats(goal.scorerId).totalGoals += 1;
     }

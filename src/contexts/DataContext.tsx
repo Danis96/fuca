@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
   addDoc,
   collection,
@@ -15,6 +15,7 @@ import {
 import { db } from '../lib/firebase';
 import { Player, Match, Goal, SaveEntry } from '../types';
 import { getAwardWinners, getResolvedMatchAwards, toFirestoreMatchAwards } from '../lib/matchAwards';
+import { buildPlayerStats } from '../lib/playerStats';
 
 interface DataContextType {
   players: Player[];
@@ -147,7 +148,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     return unsub;
   }, []);
 
-  const players = rawPlayers;
+  const players = useMemo(() => {
+    const statsByPlayerId = buildPlayerStats(rawPlayers, matches, goals);
+
+    return rawPlayers.map((player) => ({
+      ...player,
+      ...statsByPlayerId[player.id],
+    }));
+  }, [rawPlayers, matches, goals]);
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'goals'), (snap) => {
