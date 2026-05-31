@@ -920,9 +920,34 @@ function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) 
     if (sendingReminder) return;
     setSendingReminder(true);
     try {
+      const teamARecipientNames = reminderTeamAPlayers.map((player) => player.name);
+      const teamBRecipientNames = reminderTeamBPlayers.map((player) => player.name);
       const result = await sendMatchReminderEmails({
-        matchId: match.id,
-        force: true,
+        manual: {
+          date: formatMatchEmailDate(match.date),
+          time: match.time,
+          location: match.location,
+          countdownLabel,
+          notes: match.notes,
+          recipients: [
+            ...reminderTeamAPlayers.map((player) => ({
+              email: player.email,
+              playerName: player.name,
+              teamName: match.teamA.name,
+              teammateList: teamARecipientNames.filter((name) => name !== player.name).join(', ') || 'No teammates assigned yet',
+              opponentTeamName: match.teamB.name,
+              opponentList: teamBRecipientNames.join(', ') || 'No opposition assigned yet',
+            })),
+            ...reminderTeamBPlayers.map((player) => ({
+              email: player.email,
+              playerName: player.name,
+              teamName: match.teamB.name,
+              teammateList: teamBRecipientNames.filter((name) => name !== player.name).join(', ') || 'No teammates assigned yet',
+              opponentTeamName: match.teamA.name,
+              opponentList: teamARecipientNames.join(', ') || 'No opposition assigned yet',
+            })),
+          ],
+        },
       });
       if (result.sentCount > 0) {
         toast.success(`Sent ${result.sentCount} personal reminder${result.sentCount === 1 ? '' : 's'}.`);
