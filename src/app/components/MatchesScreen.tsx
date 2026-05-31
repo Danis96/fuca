@@ -25,6 +25,7 @@ import {
   Mail,
   Award,
   Pencil,
+  ChevronDown,
 } from 'lucide-react';
 import {
   format,
@@ -846,6 +847,7 @@ function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) 
   const [view, setView] = useState<'details' | 'teams' | 'result' | 'awards' | 'goal'>('details');
   const [sendingInvites, setSendingInvites] = useState(false);
   const [sendingReminder, setSendingReminder] = useState(false);
+  const [showReminderDetails, setShowReminderDetails] = useState(false);
 
   const rsvpStatusByPlayer = new Map((match.rsvps ?? []).map((entry) => [entry.playerId, entry.status]));
   const teamAPlayers = players.filter((p) => match.teamA.playerIds.includes(p.id));
@@ -1053,105 +1055,138 @@ function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) 
         </div>
 
         {isAdmin && match.status !== 'completed' && (
-          <div className="rounded-[1.4rem] border border-emerald-500/20 bg-[linear-gradient(135deg,rgba(16,185,129,0.14),rgba(3,7,18,0.78))] p-5 shadow-[0_20px_60px_-30px_rgba(16,185,129,0.65)]">
-            <div className="flex flex-col gap-5">
-              <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.9fr)] gap-4">
-                <div>
-                  <div className="pill mb-3 border-emerald-400/20 bg-emerald-500/10 text-emerald-200">
-                    <Mail className="w-3 h-3" />
-                    Personal Reminder
-                  </div>
-                  <h3 className="text-xl font-bold mb-1">Send a match-ready reminder</h3>
-                  <p className="text-sm text-emerald-100/70 max-w-2xl">
-                    Every player gets their own message with kickoff timing, team assignment, teammates, and opposition so nobody has to guess where they belong.
-                  </p>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-                    <p className="text-[10px] uppercase tracking-[0.24em] text-emerald-200/60 mb-1">Time Until Match</p>
-                    <p className="text-lg font-semibold text-white">{countdownLabel}</p>
-                    {kickoffAt && (
-                      <p className="text-xs text-emerald-100/60 mt-1">
-                        {format(kickoffAt, 'EEE, MMM dd · HH:mm')}
-                      </p>
-                    )}
-                  </div>
-                  <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-                    <p className="text-[10px] uppercase tracking-[0.24em] text-emerald-200/60 mb-1">Recipients</p>
-                    <p className="text-lg font-semibold text-white">{totalReminderRecipients} players</p>
-                    <p className="text-xs text-emerald-100/60 mt-1">
-                      Team A {reminderTeamAPlayers.length} · Team B {reminderTeamBPlayers.length}
+          <>
+            <div className="rounded-[1.4rem] border border-emerald-500/20 bg-[linear-gradient(135deg,rgba(16,185,129,0.14),rgba(3,7,18,0.78))] p-5 shadow-[0_20px_60px_-30px_rgba(16,185,129,0.65)]">
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0">
+                    <div className="pill mb-3 border-emerald-400/20 bg-emerald-500/10 text-emerald-200">
+                      <Mail className="w-3 h-3" />
+                      Personal Reminder
+                    </div>
+                    <h3 className="text-xl font-bold mb-1">Send a match-ready reminder</h3>
+                    <p className="text-sm text-emerald-100/70 max-w-2xl">
+                      Every player gets their own message with kickoff timing, team assignment, teammates, and opposition so nobody has to guess where they belong.
                     </p>
                   </div>
-                </div>
-              </div>
 
-              <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.3fr)_minmax(20rem,0.95fr)] gap-4 items-start">
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between mb-4">
-                    <div>
-                      <p className="text-sm font-semibold text-white">Reminder Preview</p>
-                      <p className="text-xs text-emerald-100/60">What each player will be reminded about</p>
-                    </div>
-                    <button
-                      onClick={handleSendReminder}
-                      disabled={sendingReminder}
-                      className="btn-primary inline-flex items-center justify-center gap-2 whitespace-nowrap px-4 py-2.5 disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      <Mail className="w-4 h-4" />
-                      {sendingReminder ? 'Sending…' : 'Send Reminder Now'}
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-3">
-                      <div className="rounded-xl border border-emerald-400/15 bg-emerald-500/8 px-4 py-3">
-                        <p className="text-[10px] uppercase tracking-[0.22em] text-emerald-200/55 mb-2">What They Get</p>
-                        <p className="text-sm text-emerald-50">Exact countdown to kickoff</p>
-                        <p className="text-sm text-emerald-50">Assigned team and teammate list</p>
-                        <p className="text-sm text-emerald-50">Opposition roster and match location</p>
-                      </div>
-                      <p className="text-xs text-emerald-100/60">
-                        Automatic reminders still go out during the last hour before kickoff. This button is your manual override, and it only targets assigned players who are actually available for the match.
-                      </p>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3">
-                      <p className="text-[10px] uppercase tracking-[0.22em] text-emerald-200/55 mb-3">Delivery Rules</p>
-                      <div className="grid gap-2">
-                        <p className="text-sm text-white">Only players in teams and available</p>
-                        <p className="text-sm text-white">Skips inactive and RSVP-out players</p>
-                        <p className="text-sm text-white">Automatic send in the last hour</p>
-                        <p className="text-sm text-white">One personalized version per player</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-4">
-                  <ReminderTeamPanel title={match.teamA.name} variant="a" players={reminderTeamAPlayers} />
-                  <ReminderTeamPanel title={match.teamB.name} variant="b" players={reminderTeamBPlayers} />
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-white">Sideline Goal Entry</p>
-                    <p className="text-sm text-emerald-100/65">
-                      Log scorer and assist while the match is live. Goals stay attached to this match and are reused when the final result is saved.
-                    </p>
-                  </div>
                   <button
-                    onClick={() => setView('goal')}
-                    className="btn-secondary inline-flex w-full items-center justify-center gap-2 sm:w-auto"
+                    type="button"
+                    onClick={() => setShowReminderDetails((current) => !current)}
+                    aria-expanded={showReminderDetails}
+                    className="inline-flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-left transition-colors hover:border-white/20 hover:bg-black/30"
                   >
-                    <Plus className="w-4 h-4" />
-                    Log Goal
+                    <div className="text-left">
+                      <p className="text-[10px] uppercase tracking-[0.24em] text-emerald-200/60 mb-1">Reminder Summary</p>
+                      <p className="text-sm font-semibold text-white">{totalReminderRecipients} players ready</p>
+                      <p className="text-xs text-emerald-100/60">{countdownLabel}</p>
+                    </div>
+                    <ChevronDown className={`w-4 h-4 shrink-0 text-emerald-100/75 transition-transform duration-200 ${showReminderDetails ? 'rotate-180' : ''}`} />
                   </button>
                 </div>
+
+                <AnimatePresence initial={false}>
+                  {showReminderDetails && (
+                    <motion.div
+                      key="reminder-details"
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.22, ease: 'easeOut' }}
+                      className="overflow-hidden"
+                    >
+                      <div className="pt-1 space-y-4">
+                        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-4 items-start">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
+                            <div className="self-start rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                              <p className="text-[10px] uppercase tracking-[0.24em] text-emerald-200/60 mb-1">Time Until Match</p>
+                              <p className="text-lg font-semibold text-white">{countdownLabel}</p>
+                              {kickoffAt && (
+                                <p className="text-xs text-emerald-100/60 mt-1">
+                                  {format(kickoffAt, 'EEE, MMM dd · HH:mm')}
+                                </p>
+                              )}
+                            </div>
+                            <div className="self-start rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                              <p className="text-[10px] uppercase tracking-[0.24em] text-emerald-200/60 mb-1">Recipients</p>
+                              <p className="text-lg font-semibold text-white">{totalReminderRecipients} players</p>
+                              <p className="text-xs text-emerald-100/60 mt-1">
+                                Team A {reminderTeamAPlayers.length} · Team B {reminderTeamBPlayers.length}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-4">
+                              <div>
+                                <p className="text-sm font-semibold text-white">Reminder Preview</p>
+                                <p className="text-xs text-emerald-100/60">A quick look at what gets sent</p>
+                              </div>
+                              <button
+                                onClick={handleSendReminder}
+                                disabled={sendingReminder}
+                                className="btn-primary inline-flex items-center justify-center gap-2 whitespace-nowrap px-4 py-2.5 disabled:opacity-60 disabled:cursor-not-allowed"
+                              >
+                                <Mail className="w-4 h-4" />
+                                {sendingReminder ? 'Sending…' : 'Send Reminder Now'}
+                              </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <div className="rounded-xl border border-emerald-400/15 bg-emerald-500/8 px-4 py-3">
+                                <p className="text-[10px] uppercase tracking-[0.22em] text-emerald-200/55 mb-2">What They Get</p>
+                                <div className="grid gap-1.5 text-sm text-emerald-50">
+                                  <p>Exact countdown to kickoff</p>
+                                  <p>Assigned team and teammate list</p>
+                                  <p>Opposition roster and match location</p>
+                                </div>
+                              </div>
+                              <div className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                                <p className="text-[10px] uppercase tracking-[0.22em] text-emerald-200/55 mb-2">Delivery Rules</p>
+                                <div className="grid gap-1.5 text-sm text-white">
+                                  <p>Only players in teams and available</p>
+                                  <p>Skips inactive and RSVP-out players</p>
+                                  <p>Automatic send in the last hour</p>
+                                  <p>One personalized version per player</p>
+                                </div>
+                              </div>
+                            </div>
+
+                            <p className="mt-3 text-xs text-emerald-100/60">
+                              Automatic reminders still go out during the last hour before kickoff. This button is your manual override, and it only targets assigned players who are actually available for the match.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <ReminderTeamPanel title={match.teamA.name} variant="a" players={reminderTeamAPlayers} />
+                          <ReminderTeamPanel title={match.teamB.name} variant="b" players={reminderTeamBPlayers} />
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             </div>
-          </div>
+
+            <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-white">Sideline Goal Entry</p>
+                  <p className="text-sm text-emerald-100/65">
+                    Log scorer and assist while the match is live. Goals stay attached to this match and are reused when the final result is saved.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setView('goal')}
+                  className="btn-secondary inline-flex w-full items-center justify-center gap-2 sm:w-auto"
+                >
+                  <Plus className="w-4 h-4" />
+                  Log Goal
+                </button>
+              </div>
+            </div>
+          </>
         )}
 
         {match.status === 'scheduled' && (
@@ -2123,8 +2158,19 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
   const existingGoals = allGoals
     .filter((goal) => goal.matchId === match.id)
     .sort((a, b) => (a.minute ?? 999) - (b.minute ?? 999));
-  const [teamAScore, setTeamAScore] = useState<number>(match.teamA.score ?? 0);
-  const [teamBScore, setTeamBScore] = useState<number>(match.teamB.score ?? 0);
+  const existingGoalTotals = existingGoals.reduce(
+    (totals, goal) => {
+      if (goal.team === 'A') {
+        totals.teamA += 1;
+      } else {
+        totals.teamB += 1;
+      }
+      return totals;
+    },
+    { teamA: 0, teamB: 0 }
+  );
+  const [teamAScore, setTeamAScore] = useState<number>(match.teamA.score ?? existingGoalTotals.teamA);
+  const [teamBScore, setTeamBScore] = useState<number>(match.teamB.score ?? existingGoalTotals.teamB);
   const [goals, setGoals] = useState<GoalDraft[]>(
     existingGoals.map((goal) => ({
       scorerId: goal.scorerId,
@@ -2246,7 +2292,11 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
   return (
     <ModalShell
       title={match.status === 'completed' ? 'Edit Result' : 'Record Result'}
-      subtitle="Set final score, goalscorers, saves, and let the weekly awards auto-assign."
+      subtitle={
+        existingGoals.length > 0 && match.status !== 'completed'
+          ? 'Final score is prefilled from the goals already logged during play.'
+          : 'Set final score, goalscorers, saves, and let the weekly awards auto-assign.'
+      }
       onClose={onClose}
       maxWidth="48rem"
       footer={
@@ -2293,6 +2343,11 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
           />
         </div>
       </div>
+      {existingGoals.length > 0 && match.status !== 'completed' && (
+        <p className="text-xs text-gray-500 -mt-5 mb-6">
+          These goals are already attached to the match, so the result starts from them automatically.
+        </p>
+      )}
 
       {/* Goals */}
       <div>
