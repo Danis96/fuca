@@ -158,3 +158,16 @@ export function getPlayerAwardCounts(matches: Match[], playerId: string) {
 
   return counts;
 }
+
+export function getCurrentAwardTitles(matches: Match[], now = new Date()) {
+  const nextScheduledMatch = matches
+    .filter((match) => match.status === 'scheduled' && match.awards && match.date >= now)
+    .sort((a, b) => a.date.getTime() - b.date.getTime())[0];
+
+  if (nextScheduledMatch?.awards) {
+    return getResolvedMatchAwards(nextScheduledMatch.awards);
+  }
+
+  const latestAwardedMatch = matches.find((match) => match.awards);
+  return getResolvedMatchAwards(latestAwardedMatch?.awards);
+}

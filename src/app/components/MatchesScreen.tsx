@@ -1323,32 +1323,15 @@ function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) 
                   ? players.find((player) => player.id === goal.assistId)
                   : null;
                 return (
-                  <div
+                  <GoalEventCard
                     key={goal.id}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3"
-                  >
-                    <div>
-                      <p className="font-medium">
-                        {scorer?.name ?? 'Unknown scorer'}
-                        {assister ? ` · Assist: ${assister.name}` : ''}
-                      </p>
-                      <p className="text-sm text-gray-500">Team {goal.team}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-gray-300">
-                        {goal.minute !== undefined ? `${goal.minute}'` : '—'}
-                      </span>
-                      {isAdmin && match.status !== 'completed' && (
-                        <button
-                          onClick={() => handleDeleteGoal(goal.id)}
-                          className="btn-danger-soft"
-                          title="Delete goal"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                    scorer={scorer}
+                    assister={assister}
+                    team={goal.team}
+                    minute={goal.minute}
+                    canDelete={isAdmin && match.status !== 'completed'}
+                    onDelete={() => handleDeleteGoal(goal.id)}
+                  />
                 );
               })}
               {match.saves?.map((entry) => {
@@ -1420,6 +1403,107 @@ function SquadPanel({ title, variant, players }: { title: string; variant: 'a' |
         {players.length === 0 && (
           <p className="text-sm text-gray-500 italic">No players assigned</p>
         )}
+      </div>
+    </div>
+  );
+}
+
+function GoalEventCard({
+  scorer,
+  assister,
+  team,
+  minute,
+  canDelete,
+  onDelete,
+}: {
+  scorer?: Player | null;
+  assister?: Player | null;
+  team: 'A' | 'B';
+  minute?: number;
+  canDelete: boolean;
+  onDelete: () => void;
+}) {
+  const variant = team === 'A' ? 'a' : 'b';
+  const teamLabel = `Team ${team}`;
+
+  return (
+    <div className={`goal-event-card ${variant}`}>
+      <div className="goal-event-card__glow" />
+      <div className="goal-event-card__topline">
+        <div className="goal-event-card__meta">
+          <span className={`btn-pill ${team === 'A' ? 'team-a' : 'team-b'} pointer-events-none`}>{teamLabel}</span>
+          <span className="goal-event-card__type">{assister ? 'Linked play' : 'Solo finish'}</span>
+        </div>
+        <div className="goal-event-card__actions">
+          <span className="goal-event-card__minute">{minute !== undefined ? `${minute}'` : 'FT'}</span>
+          {canDelete && (
+            <button
+              onClick={onDelete}
+              className="btn-danger-soft"
+              title="Delete goal"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {assister ? (
+        <div className="goal-link">
+          <EventPlayerChip
+            label="Assist"
+            player={assister}
+            emphasis="support"
+          />
+          <div className="goal-link__connector" aria-hidden="true">
+            <div className="goal-link__line" />
+            <Sparkles className="goal-link__icon" />
+            <div className="goal-link__line" />
+          </div>
+          <EventPlayerChip
+            label="Goal"
+            player={scorer}
+            emphasis="finish"
+          />
+        </div>
+      ) : (
+        <div className="goal-solo">
+          <EventPlayerChip
+            label="Goal"
+            player={scorer}
+            emphasis="finish"
+          />
+          <div className="goal-solo__note">Unassisted finish</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EventPlayerChip({
+  label,
+  player,
+  emphasis,
+}: {
+  label: string;
+  player?: Player | null;
+  emphasis: 'support' | 'finish';
+}) {
+  const name = player?.name ?? (label === 'Assist' ? 'Unknown assister' : 'Unknown scorer');
+  const initial = name.charAt(0).toUpperCase();
+
+  return (
+    <div className={`event-player-chip ${emphasis}`}>
+      <div className="event-player-chip__avatar" aria-hidden="true">
+        {player?.avatar ? (
+          <img src={player.avatar} alt={name} className="h-full w-full object-cover" />
+        ) : (
+          <span>{initial}</span>
+        )}
+      </div>
+      <div className="min-w-0">
+        <p className="event-player-chip__label">{label}</p>
+        <p className="event-player-chip__name">{name}</p>
       </div>
     </div>
   );
@@ -2169,8 +2253,6 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
     },
     { teamA: 0, teamB: 0 }
   );
-  const [teamAScore, setTeamAScore] = useState<number>(match.teamA.score ?? existingGoalTotals.teamA);
-  const [teamBScore, setTeamBScore] = useState<number>(match.teamB.score ?? existingGoalTotals.teamB);
   const [goals, setGoals] = useState<GoalDraft[]>(
     existingGoals.map((goal) => ({
       scorerId: goal.scorerId,
@@ -2183,6 +2265,17 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
     Object.fromEntries((match.saves ?? []).map((entry) => [entry.playerId, entry.saves]))
   );
   const [saving, setSaving] = useState(false);
+  const goalTotals = goals.reduce(
+    (totals, goal) => {
+      if (goal.team === 'A') {
+        totals.teamA += 1;
+      } else {
+        totals.teamB += 1;
+      }
+      return totals;
+    },
+    { teamA: 0, teamB: 0 }
+  );
 
   const teamAPlayers = players.filter((p) => match.teamA.playerIds.includes(p.id));
   const teamBPlayers = players.filter((p) => match.teamB.playerIds.includes(p.id));
@@ -2231,12 +2324,18 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
 
     setSaving(true);
     try {
-      await recordResult(match.id, teamAScore, teamBScore, goals, saveEntries, suggestedMvpId);
+      await recordResult(match.id, goalTotals.teamA, goalTotals.teamB, goals, saveEntries, suggestedMvpId);
       toast.success(match.status === 'completed' ? 'Result updated' : 'Result recorded');
       onClose();
     } catch (err) {
       console.error(err);
-      toast.error(match.status === 'completed' ? 'Failed to update result' : 'Failed to record result');
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : match.status === 'completed'
+          ? 'Failed to update result'
+          : 'Failed to record result'
+      );
     } finally {
       setSaving(false);
     }
@@ -2323,10 +2422,10 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
           </div>
           <input
             type="number"
-            min={0}
-            value={teamAScore}
-            onChange={(e) => setTeamAScore(parseInt(e.target.value || '0', 10))}
-            className="score-input"
+            value={goalTotals.teamA}
+            readOnly
+            aria-readonly="true"
+            className="score-input cursor-default"
           />
         </div>
         <div className="vs-divider mb-3">VS</div>
@@ -2336,18 +2435,16 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
           </div>
           <input
             type="number"
-            min={0}
-            value={teamBScore}
-            onChange={(e) => setTeamBScore(parseInt(e.target.value || '0', 10))}
-            className="score-input"
+            value={goalTotals.teamB}
+            readOnly
+            aria-readonly="true"
+            className="score-input cursor-default"
           />
         </div>
       </div>
-      {existingGoals.length > 0 && match.status !== 'completed' && (
-        <p className="text-xs text-gray-500 -mt-5 mb-6">
-          These goals are already attached to the match, so the result starts from them automatically.
-        </p>
-      )}
+      <p className="text-xs text-gray-500 -mt-5 mb-6">
+        Final score is calculated from the logged goal rows, so match score, events, and leaderboard stats stay in sync.
+      </p>
 
       {/* Goals */}
       <div>

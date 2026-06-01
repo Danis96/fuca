@@ -2,10 +2,10 @@ import { motion } from 'motion/react';
 import type { ReactNode } from 'react';
 import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { Calendar, Trophy, Target, Users, TrendingUp, Award, Flame, Link2, Shield } from 'lucide-react';
+import { Calendar, Trophy, Target, Users, TrendingUp, Award, Flame, Link2, Shield, Newspaper } from 'lucide-react';
 import { format } from 'date-fns';
 import { getTotalPoints } from '../../lib/playerStats';
-import { getBestPartnership, getBestPartnerships, getBiggestWin, getLatestWeeklyAwardWinners, getTopFormPlayer, getTopFormPlayers } from '../../lib/storyStats';
+import { getBestPartnership, getBestPartnerships, getBiggestWin, getDailyStoryFeed, getLatestWeeklyAwardWinners, getTopFormPlayer, getTopFormPlayers } from '../../lib/storyStats';
 
 export function DashboardHome() {
   const { players, matches, goals } = useData();
@@ -29,6 +29,7 @@ export function DashboardHome() {
   const bestPartnerships = getBestPartnerships(players, matches, goals, 2);
   const secondBestPartnership = bestPartnerships[1] ?? null;
   const latestWeeklyAwards = getLatestWeeklyAwardWinners(players, matches);
+  const dailyStoryFeed = getDailyStoryFeed(players, matches, goals);
   const biggestWinTeamAPlayers = biggestWin
     ? biggestWin.match.teamA.playerIds
         .map((playerId) => players.find((player) => player.id === playerId))
@@ -141,6 +142,38 @@ export function DashboardHome() {
         })}
       </motion.div>
 
+      <div className="panel p-4 mt-8">
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div className="flex items-center gap-3">
+            <div className="icon-badge">
+              <Newspaper className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold">Story Feed</h2>
+              <p className="text-sm text-gray-500">Fuca news and updates from latest matches.</p>
+            </div>
+          </div>
+          <div className="pill shrink-0">
+            Daily edition
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {dailyStoryFeed.map((item, index) => (
+            <motion.div
+              key={item.id}
+              className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.05 + index * 0.05, duration: 0.3 }}
+            >
+              <p className="text-[11px] uppercase tracking-[0.24em] text-emerald-300/80 mb-1">Headline</p>
+              <p className="text-base font-semibold leading-snug text-balance">{item.headline}</p>
+              <p className="text-sm text-gray-500 mt-1">{item.subline}</p>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+
       <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="panel p-6">
           <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
@@ -205,6 +238,7 @@ export function DashboardHome() {
                   }`}>
                     {index + 1}
                   </div>
+                  <TopPerformerAvatar player={player} rank={index + 1} />
                   <div className="flex-1">
                     <p className="font-medium">{player.name}</p>
                     <p className="text-sm text-gray-500">{player.position || '—'}</p>
@@ -325,6 +359,36 @@ export function DashboardHome() {
           <WeeklyAwardsCard latestWeeklyAwards={latestWeeklyAwards} />
         </div>
       </div>
+    </div>
+  );
+}
+
+function TopPerformerAvatar({
+  player,
+  rank,
+}: {
+  player: { name: string; avatar?: string };
+  rank: number;
+}) {
+  const initial = player.name.charAt(0).toUpperCase();
+  const accentClass =
+    rank === 1
+      ? 'from-amber-400/30 via-amber-300/10 to-transparent border-amber-300/30'
+      : rank === 2
+        ? 'from-slate-300/25 via-slate-200/10 to-transparent border-slate-300/20'
+        : rank === 3
+          ? 'from-orange-400/25 via-orange-300/10 to-transparent border-orange-300/20'
+          : 'from-white/10 via-white/5 to-transparent border-white/10';
+
+  return (
+    <div className={`relative h-12 w-12 shrink-0 overflow-hidden rounded-2xl border bg-gradient-to-br ${accentClass}`}>
+      {player.avatar ? (
+        <img src={player.avatar} alt={player.name} className="h-full w-full object-cover" />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-sm font-bold text-white/85">
+          {initial}
+        </div>
+      )}
     </div>
   );
 }
