@@ -2,6 +2,11 @@ import { Goal, Match, Player } from '../types';
 import { getSavePoints } from './playerStats';
 
 type ResultCode = 'W' | 'D' | 'L';
+type StoryFeedItem = {
+  id: string;
+  headline: string;
+  subline: string;
+};
 
 function getCompletedMatches(matches: Match[]) {
   return matches
@@ -223,4 +228,261 @@ export function getLatestWeeklyAwardWinners(players: Player[], matches: Match[])
     match: latestMatch,
     items,
   };
+}
+
+export function getDailyStoryFeed(
+  players: Player[],
+  matches: Match[],
+  goals: Goal[],
+  now = new Date(),
+  limit = 4,
+) {
+  const completedMatches = getCompletedMatches(matches);
+  const recentMatches = completedMatches.slice(-3);
+  const upcomingMatch = matches
+    .filter((match) => match.status === 'scheduled')
+    .sort((a, b) => a.date.getTime() - b.date.getTime())[0] ?? null;
+  const topScorer = [...players].sort((a, b) => b.totalGoals - a.totalGoals)[0] ?? null;
+  const topAssister = [...players].sort((a, b) => b.totalAssists - a.totalAssists)[0] ?? null;
+  const topFormPlayer = getTopFormPlayer(players, matches, goals);
+  const biggestWin = getBiggestWin(matches);
+  const bestPartnership = getBestPartnership(players, matches, goals);
+  const latestAwards = getLatestWeeklyAwardWinners(players, matches);
+  const activePlayers = players.filter((player) => player.status === 'active');
+  const latestMatch = completedMatches[completedMatches.length - 1] ?? null;
+  const streakLeaders = players
+    .map((player) => ({
+      player,
+      streak: getPlayerCurrentStreak(matches, player.id),
+    }))
+    .filter((entry) => entry.streak.count > 0 && entry.streak.type !== 'none')
+    .sort((a, b) => b.streak.count - a.streak.count);
+  const winStreakLeader = streakLeaders.find((entry) => entry.streak.type === 'W') ?? null;
+  const drawStreakLeader = streakLeaders.find((entry) => entry.streak.type === 'D') ?? null;
+  const makeItem = (id: string, headline: string, subline: string): StoryFeedItem => ({
+    id,
+    headline,
+    subline,
+  });
+
+  const candidates: StoryFeedItem[] = [];
+
+  if (topScorer && topScorer.totalGoals > 0) {
+    candidates.push(
+      makeItem(
+        'top-scorer',
+        `${topScorer.name} cannot stop scoring`,
+        `${topScorer.totalGoals} goals have pushed them to the top of the scoring chart.`,
+      ),
+      makeItem(
+        'golden-boot',
+        `${topScorer.name} sets the pace in the golden boot race`,
+        `The league-leading total stands at ${topScorer.totalGoals} goals.`,
+      ),
+    );
+  }
+
+  if (topAssister && topAssister.totalAssists > 0) {
+    candidates.push(
+      makeItem(
+        'top-assister',
+        `${topAssister.name} has taken over the assist race`,
+        `${topAssister.totalAssists} assists have turned them into the league's chief creator.`,
+      ),
+      makeItem(
+        'playmaker-watch',
+        `${topAssister.name} keeps picking defenses apart`,
+        `No one has matched their ${topAssister.totalAssists} assists so far.`,
+      ),
+    );
+  }
+
+  if (topFormPlayer?.player) {
+    candidates.push(
+      makeItem(
+        'form-king',
+        `${topFormPlayer.player.name} is the hottest player in the league`,
+        `${topFormPlayer.score} form points across the last ${topFormPlayer.windowSize} matches says it all.`,
+      ),
+      makeItem(
+        'heat-check',
+        `${topFormPlayer.player.name} is putting together a real hot streak`,
+        `Recent production has made them the name everyone is chasing right now.`,
+      ),
+    );
+  }
+
+  if (bestPartnership?.players[0] && bestPartnership?.players[1]) {
+    candidates.push(
+      makeItem(
+        'best-partnership',
+        `${bestPartnership.players[0].name} and ${bestPartnership.players[1].name} are becoming the league's favorite link-up`,
+        `${bestPartnership.linkedGoals} combined scoring connections already stand out.`,
+      ),
+    );
+  }
+
+  if (bestPartnership?.topDirection) {
+    const assister = players.find((player) => player.id === bestPartnership.topDirection?.assistId);
+    const scorer = players.find((player) => player.id === bestPartnership.topDirection?.scorerId);
+    if (assister && scorer) {
+      candidates.push(
+        makeItem(
+          'combo-route',
+          `${assister.name} to ${scorer.name} is turning into a signature move`,
+          `That connection has already delivered ${bestPartnership.topDirection.count} goals.`,
+        ),
+      );
+    }
+  }
+
+  if (biggestWin && biggestWin.margin > 0) {
+    candidates.push(
+      makeItem(
+        'biggest-win',
+        `${biggestWin.margin}-goal margin sends a message to the rest of the league`,
+        `The loudest result of the season came at ${biggestWin.match.location}.`,
+      ),
+    );
+  }
+
+  if (latestAwards?.items.find((item) => item.key === 'mvp')?.winner) {
+    const mvpWinner = latestAwards.items.find((item) => item.key === 'mvp')?.winner;
+    if (mvpWinner) {
+      candidates.push(
+        makeItem(
+          'latest-mvp',
+          `${mvpWinner.name} walks away with the latest MVP honors`,
+          `That award came out of the most recent completed match at ${latestAwards.match.location}.`,
+        ),
+      );
+    }
+  }
+
+  if (latestAwards?.items.find((item) => item.key === 'scorer')?.winner) {
+    const scorerWinner = latestAwards.items.find((item) => item.key === 'scorer')?.winner;
+    const scorerTitle = latestAwards.items.find((item) => item.key === 'scorer')?.title;
+    if (scorerWinner && scorerTitle) {
+      candidates.push(
+        makeItem(
+          'award-scorer',
+          `${scorerWinner.name} claims this week's scoring honors`,
+          `${scorerTitle} belongs to them right now.`,
+        ),
+      );
+    }
+  }
+
+  if (latestAwards?.items.find((item) => item.key === 'assist')?.winner) {
+    const assistWinner = latestAwards.items.find((item) => item.key === 'assist')?.winner;
+    const assistTitle = latestAwards.items.find((item) => item.key === 'assist')?.title;
+    if (assistWinner && assistTitle) {
+      candidates.push(
+        makeItem(
+          'award-assist',
+          `${assistWinner.name} earns the latest playmaker honors`,
+          `${assistTitle} is theirs after the latest round of matches.`,
+        ),
+      );
+    }
+  }
+
+  if (winStreakLeader && winStreakLeader.streak.count >= 2) {
+    candidates.push(
+      makeItem(
+        'win-streak',
+        `${winStreakLeader.player.name} is building a win streak worth watching`,
+        `${winStreakLeader.streak.count} straight wins have them carrying real momentum.`,
+      ),
+    );
+  }
+
+  if (drawStreakLeader && drawStreakLeader.streak.count >= 2) {
+    candidates.push(
+      makeItem(
+        'draw-streak',
+        `${drawStreakLeader.player.name} keeps getting dragged into tight finishes`,
+        `${drawStreakLeader.streak.count} straight draws tell the story.`,
+      ),
+    );
+  }
+
+  if (latestMatch) {
+    candidates.push(
+      makeItem(
+        'latest-result',
+        `${latestMatch.location} just produced a ${latestMatch.teamA.score ?? 0}-${latestMatch.teamB.score ?? 0} final`,
+        `The latest matchday has already shifted the league conversation.`,
+      ),
+    );
+  }
+
+  if (upcomingMatch) {
+    candidates.push(
+      makeItem(
+        'next-match',
+        `${upcomingMatch.location} is next on the calendar`,
+        `The next league night lands on ${upcomingMatch.date.toLocaleDateString()}.`,
+      ),
+    );
+  }
+
+  if (completedMatches.length >= 3) {
+    candidates.push(
+      makeItem(
+        'season-volume',
+        `${completedMatches.length} matches in and the race is starting to take shape`,
+        `The sample is finally big enough for the leaderboard battles to feel real.`,
+      ),
+    );
+  }
+
+  if (activePlayers.length >= 8) {
+    candidates.push(
+      makeItem(
+        'active-squad',
+        `${activePlayers.length} active players are feeding a crowded title race`,
+        `Depth across the league is making every leaderboard harder to predict.`,
+      ),
+    );
+  }
+
+  if (players.length >= 10) {
+    candidates.push(
+      makeItem(
+        'player-pool',
+        `${players.length} players are now part of the season picture`,
+        `There are enough names in the mix for new storylines every week.`,
+      ),
+    );
+  }
+
+  if (recentMatches.length >= 2) {
+    candidates.push(
+      makeItem(
+        'recent-run',
+        `Recent matchdays are generating new storylines fast`,
+        `${recentMatches.length} completed matches in the latest window have shaken up the board.`,
+      ),
+    );
+  }
+
+  if (!candidates.length) {
+    candidates.push(
+      makeItem(
+        'season-waiting',
+        'The league is waiting for its first real headline',
+        'A few completed matches will turn this feed into something worth watching.',
+      ),
+    );
+  }
+
+  const dayIndex = Math.floor(
+    Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / 86_400_000,
+  );
+  const rotationStart = candidates.length ? dayIndex % candidates.length : 0;
+
+  return Array.from({ length: Math.min(limit, candidates.length) }, (_, index) => {
+    return candidates[(rotationStart + index) % candidates.length];
+  });
 }

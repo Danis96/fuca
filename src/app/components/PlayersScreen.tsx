@@ -3,7 +3,7 @@ import { Player } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
 import { uploadToImageKit } from '../../lib/imagekit';
-import { getPlayerAwardCounts } from '../../lib/matchAwards';
+import { getCurrentAwardTitles, getPlayerAwardCounts } from '../../lib/matchAwards';
 import { Plus, Edit, Trash2, User, Trophy, Target, TrendingUp, Upload, X, Award, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -16,6 +16,7 @@ export function PlayersScreen({ onSelectPlayer }: PlayersScreenProps) {
   const { players, matches, addPlayer, updatePlayer, deletePlayer } = useData();
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
+  const currentAwardTitles = getCurrentAwardTitles(matches);
 
   const handleDeletePlayer = async (id: string) => {
     if (!confirm('Are you sure you want to delete this player?')) return;
@@ -57,6 +58,36 @@ export function PlayersScreen({ onSelectPlayer }: PlayersScreenProps) {
             const awardCounts = getPlayerAwardCounts(matches, player.id);
             const totalAwards =
               awardCounts.scorer + awardCounts.assist + awardCounts.goalkeeper + awardCounts.mvp;
+            const earnedAwards = [
+              {
+                key: 'scorer',
+                icon: Trophy,
+                label: currentAwardTitles.scorer.title,
+                value: awardCounts.scorer,
+                tone: 'gold',
+              },
+              {
+                key: 'assist',
+                icon: Target,
+                label: currentAwardTitles.assist.title,
+                value: awardCounts.assist,
+                tone: 'blue',
+              },
+              {
+                key: 'goalkeeper',
+                icon: Shield,
+                label: currentAwardTitles.goalkeeper.title,
+                value: awardCounts.goalkeeper,
+                tone: 'cyan',
+              },
+              {
+                key: 'mvp',
+                icon: Award,
+                label: currentAwardTitles.mvp.title,
+                value: awardCounts.mvp,
+                tone: 'green',
+              },
+            ].filter((award) => award.value > 0);
 
             return (
               <div
@@ -160,10 +191,15 @@ export function PlayersScreen({ onSelectPlayer }: PlayersScreenProps) {
 
                 {totalAwards > 0 && (
                   <div className="mt-4 pt-4 border-t border-gray-200 grid grid-cols-2 gap-2 text-xs">
-                    <AwardChip icon={Trophy} label="Baller" value={awardCounts.scorer} tone="text-yellow-700 bg-yellow-50" />
-                    <AwardChip icon={Target} label="Wizard" value={awardCounts.assist} tone="text-blue-700 bg-blue-50" />
-                    <AwardChip icon={Shield} label="Brick Wall" value={awardCounts.goalkeeper} tone="text-cyan-700 bg-cyan-50" />
-                    <AwardChip icon={Award} label="Menace" value={awardCounts.mvp} tone="text-emerald-700 bg-emerald-50" />
+                    {earnedAwards.map((award) => (
+                      <AwardChip
+                        key={award.key}
+                        icon={award.icon}
+                        label={award.label}
+                        value={award.value}
+                        tone={award.tone}
+                      />
+                    ))}
                   </div>
                 )}
               </div>
@@ -226,16 +262,47 @@ function AwardChip({
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   value: number;
-  tone: string;
+  tone: 'gold' | 'blue' | 'cyan' | 'green';
 }) {
+  const toneStyles = {
+    gold: {
+      shell: 'border-amber-400/20 bg-[linear-gradient(135deg,rgba(120,74,10,0.34),rgba(32,24,14,0.92))] text-amber-100',
+      icon: 'border-amber-300/20 bg-amber-400/12 text-amber-300',
+      value: 'border-amber-300/20 bg-black/20 text-amber-200',
+    },
+    blue: {
+      shell: 'border-sky-400/20 bg-[linear-gradient(135deg,rgba(18,57,112,0.34),rgba(15,21,38,0.92))] text-sky-100',
+      icon: 'border-sky-300/20 bg-sky-400/12 text-sky-300',
+      value: 'border-sky-300/20 bg-black/20 text-sky-200',
+    },
+    cyan: {
+      shell: 'border-cyan-400/20 bg-[linear-gradient(135deg,rgba(10,82,93,0.34),rgba(13,24,30,0.92))] text-cyan-100',
+      icon: 'border-cyan-300/20 bg-cyan-400/12 text-cyan-300',
+      value: 'border-cyan-300/20 bg-black/20 text-cyan-200',
+    },
+    green: {
+      shell: 'border-emerald-400/20 bg-[linear-gradient(135deg,rgba(11,92,66,0.34),rgba(14,28,24,0.92))] text-emerald-100',
+      icon: 'border-emerald-300/20 bg-emerald-400/12 text-emerald-300',
+      value: 'border-emerald-300/20 bg-black/20 text-emerald-200',
+    },
+  } as const;
+
+  const styles = toneStyles[tone];
+
   return (
-    <div className={`rounded-lg px-3 py-2 ${tone}`}>
+    <div className={`rounded-xl border px-2.5 py-2 ${styles.shell}`}>
       <div className="flex items-center justify-between gap-2">
-        <span className="inline-flex items-center gap-1 font-medium">
-          <Icon className="w-3.5 h-3.5" />
-          {label}
+        <span className="inline-flex min-w-0 items-center gap-1.5">
+          <span className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border ${styles.icon}`}>
+            <Icon className="w-3 h-3" />
+          </span>
+          <span className="truncate text-[10px] font-semibold uppercase tracking-[0.08em]">
+            {label}
+          </span>
         </span>
-        <span className="font-bold">{value}</span>
+        <span className={`inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-lg border px-1.5 text-xs font-black tabular-nums ${styles.value}`}>
+          {value}
+        </span>
       </div>
     </div>
   );

@@ -283,6 +283,22 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       match.status === 'completed'
         ? getWinner(match.teamA.score ?? 0, match.teamB.score ?? 0)
         : null;
+    const goalTotals = newGoals.reduce(
+      (totals, goal) => {
+        if (goal.team === 'A') {
+          totals.teamA += 1;
+        } else {
+          totals.teamB += 1;
+        }
+        return totals;
+      },
+      { teamA: 0, teamB: 0 }
+    );
+
+    if (teamAScore !== goalTotals.teamA || teamBScore !== goalTotals.teamB) {
+      throw new Error('Final score must match the logged goals.');
+    }
+
     const newWinner = getWinner(teamAScore, teamBScore);
     const { goalCount: oldGoalCount, assistCount: oldAssistCount } = countGoalsByPlayer(existingGoals);
     const { goalCount: newGoalCount, assistCount: newAssistCount } = countGoalsByPlayer(newGoals);

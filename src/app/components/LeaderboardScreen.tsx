@@ -263,7 +263,7 @@ export function LeaderboardScreen({ onSelectPlayer }: LeaderboardScreenProps) {
         </LayoutGroup>
       </div>
 
-      {players.length > 0 && (
+      {/* {players.length > 0 && (
         <motion.div
           className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-5"
           initial="hidden"
@@ -349,7 +349,7 @@ export function LeaderboardScreen({ onSelectPlayer }: LeaderboardScreenProps) {
                 }}
               >
                 {/* Accent gradient sweep */}
-                <div
+                {/* <div
                   className="absolute inset-0 opacity-40 pointer-events-none"
                   style={{
                     background: `radial-gradient(circle at top right, ${c.glow}, transparent 60%)`,
@@ -415,7 +415,7 @@ export function LeaderboardScreen({ onSelectPlayer }: LeaderboardScreenProps) {
             );
           })}
         </motion.div>
-      )}
+      // )} */} 
     </div>
   );
 }
