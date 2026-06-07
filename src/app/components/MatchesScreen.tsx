@@ -1322,12 +1322,13 @@ function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) 
                 const assister = goal.assistId
                   ? players.find((player) => player.id === goal.assistId)
                   : null;
-                return (
+              return (
                   <GoalEventCard
                     key={goal.id}
                     scorer={scorer}
                     assister={assister}
                     team={goal.team}
+                    ownGoal={goal.ownGoal}
                     minute={goal.minute}
                     canDelete={isAdmin && match.status !== 'completed'}
                     onDelete={() => handleDeleteGoal(goal.id)}
@@ -1412,6 +1413,7 @@ function GoalEventCard({
   scorer,
   assister,
   team,
+  ownGoal,
   minute,
   canDelete,
   onDelete,
@@ -1419,12 +1421,14 @@ function GoalEventCard({
   scorer?: Player | null;
   assister?: Player | null;
   team: 'A' | 'B';
+  ownGoal?: boolean;
   minute?: number;
   canDelete: boolean;
   onDelete: () => void;
 }) {
   const variant = team === 'A' ? 'a' : 'b';
   const teamLabel = `Team ${team}`;
+  const ownGoalByTeam = team === 'A' ? 'B' : 'A';
 
   return (
     <div className={`goal-event-card ${variant}`}>
@@ -1432,7 +1436,9 @@ function GoalEventCard({
       <div className="goal-event-card__topline">
         <div className="goal-event-card__meta">
           <span className={`btn-pill ${team === 'A' ? 'team-a' : 'team-b'} pointer-events-none`}>{teamLabel}</span>
-          <span className="goal-event-card__type">{assister ? 'Linked play' : 'Solo finish'}</span>
+          <span className="goal-event-card__type">
+            {ownGoal ? 'Own goal' : assister ? 'Linked play' : 'Solo finish'}
+          </span>
         </div>
         <div className="goal-event-card__actions">
           <span className="goal-event-card__minute">{minute !== undefined ? `${minute}'` : 'FT'}</span>
@@ -1448,7 +1454,16 @@ function GoalEventCard({
         </div>
       </div>
 
-      {assister ? (
+      {ownGoal ? (
+        <div className="goal-solo">
+          <EventPlayerChip
+            label="Own goal"
+            fallbackName={`Team ${ownGoalByTeam}`}
+            emphasis="finish"
+          />
+          <div className="goal-solo__note">Credited to Team {team}</div>
+        </div>
+      ) : assister ? (
         <div className="goal-link">
           <EventPlayerChip
             label="Assist"
@@ -1483,13 +1498,18 @@ function GoalEventCard({
 function EventPlayerChip({
   label,
   player,
+  fallbackName,
   emphasis,
 }: {
   label: string;
   player?: Player | null;
+  fallbackName?: string;
   emphasis: 'support' | 'finish';
 }) {
-  const name = player?.name ?? (label === 'Assist' ? 'Unknown assister' : 'Unknown scorer');
+  const name =
+    player?.name
+    ?? fallbackName
+    ?? (label === 'Assist' ? 'Unknown assister' : 'Unknown scorer');
   const initial = name.charAt(0).toUpperCase();
 
   return (
@@ -1678,8 +1698,9 @@ interface QuickGoalModalProps {
 function QuickGoalModal({ match, onClose, onBack }: QuickGoalModalProps) {
   const { players, goals, addGoal } = useData();
   const [team, setTeam] = useState<'A' | 'B'>('A');
+  const [ownGoal, setOwnGoal] = useState(false);
   const [scorerId, setScorerId] = useState('');
-  const [assistId, setAssistId] = useState<string | undefined>(undefined);
+  const [assistId, setAssistId] = useState<string | undefined>(NO_ASSIST_VALUE);
   const [saving, setSaving] = useState(false);
 
   const teamAPlayers = players.filter((p) => match.teamA.playerIds.includes(p.id));
@@ -1690,16 +1711,21 @@ function QuickGoalModal({ match, onClose, onBack }: QuickGoalModalProps) {
     .sort((a, b) => (a.createdAt?.getTime?.() ?? 0) - (b.createdAt?.getTime?.() ?? 0));
 
   const scorerPlayer = scorerId ? players.find((player) => player.id === scorerId) ?? null : null;
-  const assistPlayer = assistId ? players.find((player) => player.id === assistId) ?? null : null;
+  const normalizedAssistId = assistId === NO_ASSIST_VALUE ? undefined : assistId;
+  const assistPlayer = normalizedAssistId
+    ? players.find((player) => player.id === normalizedAssistId) ?? null
+    : null;
+  const ownGoalByTeam = team === 'A' ? 'B' : 'A';
 
   const handleTeamChange = (nextTeam: 'A' | 'B') => {
     setTeam(nextTeam);
+    setOwnGoal(false);
     setScorerId('');
-    setAssistId(undefined);
+    setAssistId(NO_ASSIST_VALUE);
   };
 
   const handleSave = async () => {
-    if (!scorerId) {
+    if (!ownGoal && !scorerId) {
       toast.error('Pick a scorer');
       return;
     }
@@ -1708,13 +1734,15 @@ function QuickGoalModal({ match, onClose, onBack }: QuickGoalModalProps) {
     try {
       await addGoal({
         matchId: match.id,
-        scorerId,
-        assistId,
+        scorerId: ownGoal ? undefined : scorerId,
+        assistId: ownGoal ? undefined : normalizedAssistId,
         team,
+        ownGoal,
       });
       toast.success('Goal logged');
+      setOwnGoal(false);
       setScorerId('');
-      setAssistId(undefined);
+      setAssistId(NO_ASSIST_VALUE);
     } catch (error) {
       console.error(error);
       toast.error('Failed to log goal');
@@ -1724,7 +1752,7 @@ function QuickGoalModal({ match, onClose, onBack }: QuickGoalModalProps) {
   };
 
   const renderPlayerButton = (player: Player, kind: 'scorer' | 'assist') => {
-    const isSelected = kind === 'scorer' ? scorerId === player.id : assistId === player.id;
+    const isSelected = kind === 'scorer' ? scorerId === player.id : normalizedAssistId === player.id;
     const disabled = kind === 'assist' && player.id === scorerId;
 
     return (
@@ -1736,14 +1764,14 @@ function QuickGoalModal({ match, onClose, onBack }: QuickGoalModalProps) {
           if (kind === 'scorer') {
             if (isSelected) {
               setScorerId('');
-              if (assistId === player.id) setAssistId(undefined);
+              if (normalizedAssistId === player.id) setAssistId(NO_ASSIST_VALUE);
               return;
             }
             setScorerId(player.id);
-            if (assistId === player.id) setAssistId(undefined);
+            if (normalizedAssistId === player.id) setAssistId(NO_ASSIST_VALUE);
           } else {
             if (isSelected) {
-              setAssistId(undefined);
+              setAssistId(NO_ASSIST_VALUE);
               return;
             }
             setAssistId(player.id);
@@ -1831,37 +1859,69 @@ function QuickGoalModal({ match, onClose, onBack }: QuickGoalModalProps) {
                 {scorerPlayer.name}
               </span>
             )}
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {teamPlayers.map((player) => renderPlayerButton(player, 'scorer'))}
-            {teamPlayers.length === 0 && (
-              <p className="text-sm text-gray-500 italic">No players assigned to this team.</p>
+            {ownGoal && (
+              <span className={`btn-pill ${team === 'A' ? 'team-a' : 'team-b'} pointer-events-none`}>
+                Own goal by Team {ownGoalByTeam}
+              </span>
             )}
           </div>
+          <button
+            type="button"
+            onClick={() => {
+              setOwnGoal((current) => {
+                const next = !current;
+                if (next) {
+                  setScorerId('');
+                  setAssistId(NO_ASSIST_VALUE);
+                }
+                return next;
+              });
+            }}
+            className={`btn-pill ${ownGoal ? (team === 'A' ? 'team-a' : 'team-b') : ''}`}
+          >
+            Own goal by Team {ownGoalByTeam}
+          </button>
+          {ownGoal ? (
+            <p className="text-sm text-gray-500 italic">
+              This adds a goal for Team {team} without crediting a scorer or assist.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {teamPlayers.map((player) => renderPlayerButton(player, 'scorer'))}
+              {teamPlayers.length === 0 && (
+                <p className="text-sm text-gray-500 italic">No players assigned to this team.</p>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-4 space-y-4">
-        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
               <h3 className="font-bold">Assist</h3>
               <p className="text-sm text-gray-500">Optional. Tap no assist if needed.</p>
             </div>
             <button
               type="button"
-              onClick={() => setAssistId(undefined)}
-              className={`btn-pill ${assistId === undefined ? (team === 'A' ? 'team-a' : 'team-b') : ''}`}
+              onClick={() => setAssistId(NO_ASSIST_VALUE)}
+              disabled={ownGoal}
+              className={`btn-pill ${normalizedAssistId === undefined && !ownGoal ? (team === 'A' ? 'team-a' : 'team-b') : ''} ${ownGoal ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               No assist
             </button>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {teamPlayers
-              .filter((player) => player.id !== scorerId)
-              .map((player) => renderPlayerButton(player, 'assist'))}
-            {teamPlayers.filter((player) => player.id !== scorerId).length === 0 && (
-              <p className="text-sm text-gray-500 italic">Only the scorer is available for this assist list.</p>
-            )}
-          </div>
+          {ownGoal ? (
+            <p className="text-sm text-gray-500 italic">Assists are not available for own goals.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {teamPlayers
+                .filter((player) => player.id !== scorerId)
+                .map((player) => renderPlayerButton(player, 'assist'))}
+              {teamPlayers.filter((player) => player.id !== scorerId).length === 0 && (
+                <p className="text-sm text-gray-500 italic">Only the scorer is available for this assist list.</p>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-4">
@@ -1869,8 +1929,10 @@ function QuickGoalModal({ match, onClose, onBack }: QuickGoalModalProps) {
             <div>
               <p className="text-sm font-medium text-gray-200">Current selection</p>
               <p className="text-sm text-gray-500">
-                Team {team} · {scorerPlayer?.name ?? 'no scorer yet'}
-                {assistId ? ` · assist ${assistPlayer?.name ?? 'selected'}` : ' · no assist'}
+                Team {team}
+                {ownGoal
+                  ? ` · own goal by Team ${ownGoalByTeam}`
+                  : ` · ${scorerPlayer?.name ?? 'no scorer yet'}${normalizedAssistId ? ` · assist ${assistPlayer?.name ?? 'selected'}` : ' · no assist'}`}
               </p>
             </div>
             <span className="text-xs uppercase tracking-wider text-gray-500 font-semibold">
@@ -2236,6 +2298,8 @@ interface RecordResultModalProps {
 
 type GoalDraft = Omit<Goal, 'id' | 'matchId' | 'createdAt'>;
 type SaveDraft = SaveEntry;
+const OWN_GOAL_VALUE = '__OWN_GOAL__';
+const NO_ASSIST_VALUE = '__NO_ASSIST__';
 
 function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
   const { players, goals: allGoals, recordResult } = useData();
@@ -2256,8 +2320,9 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
   const [goals, setGoals] = useState<GoalDraft[]>(
     existingGoals.map((goal) => ({
       scorerId: goal.scorerId,
-      assistId: goal.assistId,
+      assistId: goal.assistId ?? NO_ASSIST_VALUE,
       team: goal.team,
+      ownGoal: goal.ownGoal ?? false,
       minute: goal.minute,
     }))
   );
@@ -2265,6 +2330,10 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
     Object.fromEntries((match.saves ?? []).map((entry) => [entry.playerId, entry.saves]))
   );
   const [saving, setSaving] = useState(false);
+  const normalizedGoals = goals.map((goal) => ({
+    ...goal,
+    assistId: goal.assistId === NO_ASSIST_VALUE ? undefined : goal.assistId,
+  }));
   const goalTotals = goals.reduce(
     (totals, goal) => {
       if (goal.team === 'A') {
@@ -2279,11 +2348,10 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
 
   const teamAPlayers = players.filter((p) => match.teamA.playerIds.includes(p.id));
   const teamBPlayers = players.filter((p) => match.teamB.playerIds.includes(p.id));
-  const teamAGoalkeepers = teamAPlayers.filter((p) => p.position === 'Goalkeeper');
-  const teamBGoalkeepers = teamBPlayers.filter((p) => p.position === 'Goalkeeper');
+  const saveEligiblePlayers = [...teamAPlayers, ...teamBPlayers];
   const suggestedMvpId = getSuggestedMvpId({
     playerIds: [...match.teamA.playerIds, ...match.teamB.playerIds],
-    goals,
+    goals: normalizedGoals,
     saves: Object.entries(saves)
       .map(([playerId, total]) => ({ playerId, saves: total }))
       .filter((entry) => entry.saves > 0),
@@ -2293,7 +2361,7 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
     : null;
   const suggestedAwards = getAwardWinners({
     awards: match.awards,
-    goals,
+    goals: normalizedGoals,
     saves: Object.entries(saves)
       .map(([playerId, total]) => ({ playerId, saves: total }))
       .filter((entry) => entry.saves > 0),
@@ -2302,7 +2370,7 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
   });
 
   const addGoalRow = (team: 'A' | 'B') => {
-    setGoals([...goals, { scorerId: '', assistId: undefined, team, minute: undefined }]);
+    setGoals([...goals, { scorerId: '', assistId: NO_ASSIST_VALUE, team, ownGoal: false, minute: undefined }]);
   };
   const updateGoal = (index: number, patch: Partial<GoalDraft>) => {
     setGoals(goals.map((g, i) => (i === index ? { ...g, ...patch } : g)));
@@ -2313,7 +2381,7 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
   };
 
   const handleSave = async () => {
-    if (goals.some((g) => !g.scorerId)) {
+    if (goals.some((g) => !g.ownGoal && !g.scorerId)) {
       toast.error('All goals need a scorer');
       return;
     }
@@ -2321,10 +2389,9 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
     const saveEntries: SaveDraft[] = Object.entries(saves)
       .map(([playerId, total]) => ({ playerId, saves: total }))
       .filter((entry) => entry.saves > 0);
-
     setSaving(true);
     try {
-      await recordResult(match.id, goalTotals.teamA, goalTotals.teamB, goals, saveEntries, suggestedMvpId);
+      await recordResult(match.id, goalTotals.teamA, goalTotals.teamB, normalizedGoals, saveEntries, suggestedMvpId);
       toast.success(match.status === 'completed' ? 'Result updated' : 'Result recorded');
       onClose();
     } catch (err) {
@@ -2343,6 +2410,7 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
 
   const renderGoalRow = (g: GoalDraft, idx: number) => {
     const scorerPool = g.team === 'A' ? teamAPlayers : teamBPlayers;
+    const ownGoalByTeam = g.team === 'A' ? 'B' : 'A';
     return (
       <motion.div
         key={idx}
@@ -2354,21 +2422,29 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
           Team {g.team}
         </span>
         <select
-          value={g.scorerId}
-          onChange={(e) => updateGoal(idx, { scorerId: e.target.value })}
+          value={g.ownGoal ? OWN_GOAL_VALUE : (g.scorerId ?? '')}
+          onChange={(e) => {
+            if (e.target.value === OWN_GOAL_VALUE) {
+              updateGoal(idx, { scorerId: undefined, assistId: undefined, ownGoal: true });
+              return;
+            }
+            updateGoal(idx, { scorerId: e.target.value, ownGoal: false });
+          }}
           className="field-input text-sm flex-1 min-w-[140px] py-1.5"
         >
           <option value="">Scorer…</option>
+          <option value={OWN_GOAL_VALUE}>Own goal by Team {ownGoalByTeam}</option>
           {scorerPool.map((p) => (
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
         </select>
         <select
-          value={g.assistId ?? ''}
-          onChange={(e) => updateGoal(idx, { assistId: e.target.value || undefined })}
-          className="field-input text-sm flex-1 min-w-[140px] py-1.5"
+          value={g.assistId ?? NO_ASSIST_VALUE}
+          onChange={(e) => updateGoal(idx, { assistId: e.target.value })}
+          disabled={g.ownGoal}
+          className={`field-input text-sm flex-1 min-w-[140px] py-1.5 ${g.ownGoal ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
-          <option value="">Assist (optional)…</option>
+          <option value={NO_ASSIST_VALUE}>No assist</option>
           {scorerPool.filter((p) => p.id !== g.scorerId).map((p) => (
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
@@ -2519,11 +2595,11 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
         </div>
 
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-bold">Goalkeeper Saves</h3>
-          <p className="text-sm text-gray-500">1 point per 4 saves</p>
+          <h3 className="font-bold">Saves</h3>
+          <p className="text-sm text-gray-500">You can log saves for any player. 1 point per 4 saves.</p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {[...teamAGoalkeepers, ...teamBGoalkeepers].map((player) => {
+          {saveEligiblePlayers.map((player) => {
             const team = match.teamA.playerIds.includes(player.id) ? 'A' : 'B';
             return (
               <div
@@ -2533,7 +2609,7 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="font-medium">{player.name}</p>
-                    <p className="text-sm text-gray-500">Team {team} Goalkeeper</p>
+                    <p className="text-sm text-gray-500">Team {team}</p>
                   </div>
                   <span className={`btn-pill ${team === 'A' ? 'team-a' : 'team-b'} pointer-events-none`}>
                     Team {team}
@@ -2550,9 +2626,9 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
               </div>
             );
           })}
-          {teamAGoalkeepers.length === 0 && teamBGoalkeepers.length === 0 && (
+          {saveEligiblePlayers.length === 0 && (
             <p className="text-sm text-gray-500 italic text-center py-6 col-span-full">
-              No goalkeepers assigned to this match yet.
+              No players assigned to this match yet.
             </p>
           )}
         </div>

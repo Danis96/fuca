@@ -167,6 +167,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           scorerId: data.scorerId,
           assistId: data.assistId,
           team: data.team,
+          ownGoal: data.ownGoal === true,
           minute: data.minute,
           createdAt: toDate(data.createdAt),
         };
@@ -221,10 +222,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   };
 
   const addGoal: DataContextType['addGoal'] = async (data) => {
-    const ref = await addDoc(collection(db, 'goals'), {
-      ...data,
+    const payload: Record<string, unknown> = {
+      matchId: data.matchId,
+      team: data.team,
       createdAt: serverTimestamp(),
-    });
+    };
+    if (data.scorerId !== undefined) payload.scorerId = data.scorerId;
+    if (data.ownGoal === true) payload.ownGoal = true;
+    if (data.ownGoal !== true && data.assistId !== undefined) payload.assistId = data.assistId;
+    if (data.minute !== undefined) payload.minute = data.minute;
+
+    const ref = await addDoc(collection(db, 'goals'), payload);
     return ref.id;
   };
 
@@ -328,12 +336,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     for (const g of newGoals) {
       const ref = doc(collection(db, 'goals'));
       const payload: Record<string, unknown> = {
-        scorerId: g.scorerId,
         team: g.team,
         matchId,
         createdAt: serverTimestamp(),
       };
-      if (g.assistId !== undefined) payload.assistId = g.assistId;
+      if (g.scorerId !== undefined) payload.scorerId = g.scorerId;
+      if (g.ownGoal === true) payload.ownGoal = true;
+      if (g.ownGoal !== true && g.assistId !== undefined) payload.assistId = g.assistId;
       if (g.minute !== undefined) payload.minute = g.minute;
       batch.set(ref, payload);
     }

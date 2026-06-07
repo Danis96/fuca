@@ -57,9 +57,10 @@ export interface TeamAssignment {
 export interface Goal {
   id: string;
   matchId: string;
-  scorerId: string;
+  scorerId?: string;
   assistId?: string;
   team: 'A' | 'B';
+  ownGoal?: boolean;
   minute?: number;
   createdAt: Date;
 }
