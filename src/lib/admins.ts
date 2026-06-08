@@ -1,6 +1,8 @@
 // Replace these 3 emails with the real admin Google accounts.
 // Anyone signing in with one of these emails gets full admin access.
 export const ADMIN_EMAILS = [
+  'imer5@gmail.com',
+  'emir4@gmail.com',
   'danis3@gmail.com',
   'gigo2@gmail.com',
   'mirza1@gmail.com',
