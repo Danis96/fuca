@@ -19,6 +19,40 @@ export interface Player {
 
 export type MatchAwardKey = 'scorer' | 'assist' | 'goalkeeper' | 'mvp';
 
+export interface MatchRecapPerson {
+  playerId: string | null;
+  playerName: string;
+}
+
+export interface MatchRecapTopPerformer extends MatchRecapPerson {
+  statLine: string;
+  impactScore: number;
+}
+
+export interface MatchRecapAwardWinner {
+  key: MatchAwardKey;
+  title: string;
+  winnerId: string | null;
+  winnerName: string;
+}
+
+export interface MatchRecapStreak extends MatchRecapPerson {
+  label: string;
+  text: string;
+}
+
+export interface MatchRecap {
+  headline: string;
+  summary: string;
+  scoreline: string;
+  turningPoint: string;
+  mvp: MatchRecapPerson | null;
+  topPerformers: MatchRecapTopPerformer[];
+  awardWinners: MatchRecapAwardWinner[];
+  standoutStreaks: MatchRecapStreak[];
+  generatedAtIso: string;
+}
+
 export interface MatchAward {
   title: string;
   winnerId?: string;
@@ -46,6 +80,7 @@ export interface Match {
   saves?: SaveEntry[];
   mvpId?: string;
   awards?: MatchAwards;
+  recap?: MatchRecap;
   createdAt: Date;
 }
 

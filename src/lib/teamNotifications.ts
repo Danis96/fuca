@@ -1,4 +1,5 @@
 import { format } from 'date-fns';
+import { MatchRecap } from '../types';
 
 export interface TeamEmailRecipient {
   name: string;
@@ -68,6 +69,23 @@ export interface MatchReminderEmailResult {
   skippedReason?: string;
 }
 
+export interface MatchRecapEmailPayload {
+  matchId: string;
+  date: string;
+  time: string;
+  location: string;
+  recap: MatchRecap;
+  recipients: Array<{
+    name: string;
+    email: string;
+  }>;
+}
+
+export interface MatchRecapEmailResult {
+  sentCount: number;
+  skippedCount: number;
+}
+
 async function getErrorMessage(response: Response, fallback: string) {
   const errorText = await response.text();
 
@@ -129,6 +147,22 @@ export async function sendMatchReminderEmails(payload: MatchReminderEmailPayload
   }
 
   return (await response.json()) as MatchReminderEmailResult;
+}
+
+export async function sendMatchRecapEmails(payload: MatchRecapEmailPayload): Promise<MatchRecapEmailResult> {
+  const response = await fetch('/api/send-match-recap', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response, 'Failed to send match recap emails'));
+  }
+
+  return (await response.json()) as MatchRecapEmailResult;
 }
 
 export function formatMatchEmailDate(date: Date): string {

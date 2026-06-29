@@ -26,6 +26,7 @@ import {
   Award,
   Pencil,
   ChevronDown,
+  Beaker,
 } from 'lucide-react';
 import {
   format,
@@ -45,12 +46,42 @@ import {
 import { toast } from 'sonner';
 import {
   formatMatchEmailDate,
+  sendMatchRecapEmails,
   sendMatchReminderEmails,
   sendMatchScheduleEmails,
   sendTeamAssignmentEmails,
 } from '../../lib/teamNotifications';
 import { DEFAULT_MATCH_AWARDS, getAwardWinners, getResolvedMatchAwards } from '../../lib/matchAwards';
 import { getSavePoints, getSuggestedMvpId } from '../../lib/playerStats';
+import { MatchRecapCard } from './MatchRecapCard';
+
+const MATCH_DEV_ENV_STORAGE_KEY = 'fuca.match-dev-env';
+
+interface DevEmailSandboxState {
+  enabled: boolean;
+  recipientPlayerIds: string[];
+}
+
+interface MatchDraftPreset {
+  date: Date | null;
+  time: string;
+  location: string;
+  notes: string;
+  awards?: MatchAwards;
+}
+
+const EMPTY_DEV_EMAIL_SANDBOX: DevEmailSandboxState = {
+  enabled: false,
+  recipientPlayerIds: [],
+};
+
+const DUMMY_MATCH_PRESET: MatchDraftPreset = {
+  date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+  time: '19:00',
+  location: 'Dev Arena',
+  notes: 'Dummy match for recap and notification testing. Safe to edit or delete.',
+};
+
 function getMatchRsvpUrl(matchId: string) {
   return `${window.location.origin}${window.location.pathname}?rsvp=1&match=${encodeURIComponent(matchId)}`;
 }
@@ -95,14 +126,77 @@ async function resendMatchInvites(match: Pick<Match, 'id' | 'date' | 'time' | 'l
   });
 }
 
+function loadDevEmailSandboxState() {
+  if (typeof window === 'undefined') return EMPTY_DEV_EMAIL_SANDBOX;
+
+  try {
+    const raw = window.localStorage.getItem(MATCH_DEV_ENV_STORAGE_KEY);
+    if (!raw) return EMPTY_DEV_EMAIL_SANDBOX;
+
+    const parsed = JSON.parse(raw) as Partial<DevEmailSandboxState>;
+    return {
+      enabled: parsed.enabled === true,
+      recipientPlayerIds: Array.isArray(parsed.recipientPlayerIds)
+        ? parsed.recipientPlayerIds.filter((value): value is string => typeof value === 'string')
+        : [],
+    };
+  } catch {
+    return EMPTY_DEV_EMAIL_SANDBOX;
+  }
+}
+
+function saveDevEmailSandboxState(state: DevEmailSandboxState) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(MATCH_DEV_ENV_STORAGE_KEY, JSON.stringify(state));
+}
+
+function filterRecipientsForSandbox<T extends { email: string }>(
+  recipients: T[],
+  allowedEmails: Set<string>,
+) {
+  return recipients.filter((recipient) => allowedEmails.has(recipient.email.trim().toLowerCase()));
+}
+
 export function MatchesScreen() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, isSuperAdmin } = useAuth();
   const { matches, players, addMatch, deleteMatch } = useData();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
+  const [createMatchPreset, setCreateMatchPreset] = useState<MatchDraftPreset | null>(null);
+  const [devEmailSandbox, setDevEmailSandbox] = useState<DevEmailSandboxState>(loadDevEmailSandboxState);
 
   const upcomingMatches = matches.filter((m) => m.status === 'scheduled');
   const completedMatches = matches.filter((m) => m.status === 'completed');
+  const activePlayersWithEmail = players.filter((player) => player.status === 'active' && player.email?.trim());
+  const sandboxSelectedPlayers = activePlayersWithEmail.filter((player) =>
+    devEmailSandbox.recipientPlayerIds.includes(player.id)
+  );
+  const sandboxEmailSet = new Set(
+    sandboxSelectedPlayers.map((player) => player.email.trim().toLowerCase())
+  );
+
+  useEffect(() => {
+    saveDevEmailSandboxState(devEmailSandbox);
+  }, [devEmailSandbox]);
+
+  function getSandboxedRecipients<T extends { email: string }>(recipients: T[]) {
+    if (!isSuperAdmin || !devEmailSandbox.enabled) return recipients;
+    return filterRecipientsForSandbox(recipients, sandboxEmailSet);
+  }
+
+  const openCreateMatchModal = (preset?: MatchDraftPreset) => {
+    setCreateMatchPreset(preset ?? null);
+    setShowCreateModal(true);
+  };
+
+  const toggleSandboxRecipient = (playerId: string) => {
+    setDevEmailSandbox((current) => ({
+      ...current,
+      recipientPlayerIds: current.recipientPlayerIds.includes(playerId)
+        ? current.recipientPlayerIds.filter((id) => id !== playerId)
+        : [...current.recipientPlayerIds, playerId],
+    }));
+  };
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this match?')) return;
@@ -128,7 +222,7 @@ export function MatchesScreen() {
         </div>
         {isAdmin && (
           <motion.button
-            onClick={() => setShowCreateModal(true)}
+            onClick={() => openCreateMatchModal()}
             className="btn-primary px-5 py-3 inline-flex items-center gap-2"
             whileHover={{ scale: 1.03 }}
             whileTap={{ scale: 0.97 }}
@@ -138,6 +232,89 @@ export function MatchesScreen() {
           </motion.button>
         )}
       </div>
+
+      {isSuperAdmin && (
+        <div className="rounded-[1.4rem] border border-amber-400/20 bg-[linear-gradient(135deg,rgba(245,158,11,0.12),rgba(3,7,18,0.8))] p-5 mb-8 shadow-[0_22px_70px_-36px_rgba(245,158,11,0.65)]">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div className="max-w-2xl">
+              <div className="pill mb-3 border-amber-300/20 bg-amber-500/10 text-amber-100">
+                <Beaker className="w-3 h-3" />
+                Superadmin dev env
+              </div>
+              <h2 className="text-xl font-bold mb-1">Safe notification sandbox</h2>
+              <p className="text-sm text-amber-50/75">
+                When enabled, all match emails from this screen go only to the small recipient list below. That covers schedule invites, team assignments, reminders, and the new recap emails.
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                type="button"
+                onClick={() => setDevEmailSandbox((current) => ({ ...current, enabled: !current.enabled }))}
+                className={`btn-secondary inline-flex items-center justify-center gap-2 ${devEmailSandbox.enabled ? 'border-amber-300/35 text-amber-100' : ''}`}
+              >
+                <Shield className="w-4 h-4" />
+                {devEmailSandbox.enabled ? 'Sandbox On' : 'Sandbox Off'}
+              </button>
+              <button
+                type="button"
+                onClick={() => openCreateMatchModal(DUMMY_MATCH_PRESET)}
+                className="btn-secondary inline-flex items-center justify-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Dummy Match
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+            <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+              <div>
+                <p className="text-sm font-semibold text-white">Sandbox recipients</p>
+                <p className="text-xs text-amber-50/60">
+                  Pick the few active users who should receive test emails.
+                </p>
+              </div>
+              <p className="text-xs text-amber-100/70">
+                {sandboxSelectedPlayers.length} selected
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {activePlayersWithEmail.map((player) => {
+                const isSelected = devEmailSandbox.recipientPlayerIds.includes(player.id);
+
+                return (
+                  <button
+                    key={player.id}
+                    type="button"
+                    onClick={() => toggleSandboxRecipient(player.id)}
+                    className={`rounded-full border px-3 py-2 text-sm transition-colors ${
+                      isSelected
+                        ? 'border-amber-300/40 bg-amber-400/15 text-amber-50'
+                        : 'border-white/10 bg-white/[0.04] text-white/75 hover:border-white/20'
+                    }`}
+                    title={player.email}
+                  >
+                    {player.name}
+                  </button>
+                );
+              })}
+              {activePlayersWithEmail.length === 0 && (
+                <p className="text-sm text-amber-50/60">No active players with email addresses are available yet.</p>
+              )}
+            </div>
+
+            <p className="mt-3 text-xs text-amber-50/55">
+              {devEmailSandbox.enabled
+                ? sandboxSelectedPlayers.length > 0
+                  ? `Sandbox is active. Emails will only go to ${sandboxSelectedPlayers.map((player) => player.name).join(', ')}.`
+                  : 'Sandbox is active, but no recipients are selected yet, so email sends from this screen will be skipped.'
+                : 'Sandbox is off. Normal recipients will be used.'}
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="space-y-10">
         <Section
@@ -184,7 +361,11 @@ export function MatchesScreen() {
       <AnimatePresence>
         {showCreateModal && (
           <CreateMatchModal
-            onClose={() => setShowCreateModal(false)}
+            initialPreset={createMatchPreset}
+            onClose={() => {
+              setShowCreateModal(false);
+              setCreateMatchPreset(null);
+            }}
             onSave={async (data) => {
               try {
                 const eventTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -200,9 +381,10 @@ export function MatchesScreen() {
                   time: data.time,
                   location: data.location,
                   notes: data.notes,
-                }, players);
+                }, getSandboxedRecipients(players));
 
                 setShowCreateModal(false);
+                setCreateMatchPreset(null);
                 if (emailResult.skippedCount > 0) {
                   toast.success(`Match scheduled. Sent ${emailResult.sentCount} emails, skipped ${emailResult.skippedCount}.`);
                 } else {
@@ -223,6 +405,9 @@ export function MatchesScreen() {
             match={selectedMatch}
             onClose={() => setSelectedMatch(null)}
             isAdmin={isAdmin}
+            isSuperAdmin={isSuperAdmin}
+            sandboxEnabled={devEmailSandbox.enabled}
+            sandboxEmailSet={sandboxEmailSet}
           />
         )}
       </AnimatePresence>
@@ -430,14 +615,15 @@ function ModalShell({ title, subtitle, onClose, children, footer, maxWidth = '32
 interface CreateMatchModalProps {
   onClose: () => void;
   onSave: (data: Omit<Match, 'id' | 'createdAt'>) => Promise<unknown> | unknown;
+  initialPreset?: MatchDraftPreset | null;
 }
 
-function CreateMatchModal({ onClose, onSave }: CreateMatchModalProps) {
-  const [date, setDate] = useState<Date | null>(null);
-  const [time, setTime] = useState('');
-  const [location, setLocation] = useState('');
-  const [notes, setNotes] = useState('');
-  const [awardTitles, setAwardTitles] = useState<MatchAwards>(DEFAULT_MATCH_AWARDS);
+function CreateMatchModal({ onClose, onSave, initialPreset }: CreateMatchModalProps) {
+  const [date, setDate] = useState<Date | null>(initialPreset?.date ?? null);
+  const [time, setTime] = useState(initialPreset?.time ?? '');
+  const [location, setLocation] = useState(initialPreset?.location ?? '');
+  const [notes, setNotes] = useState(initialPreset?.notes ?? '');
+  const [awardTitles, setAwardTitles] = useState<MatchAwards>(initialPreset?.awards ?? DEFAULT_MATCH_AWARDS);
 
   const updateAwardTitle = (key: keyof MatchAwards, title: string) => {
     setAwardTitles((current) => ({
@@ -840,9 +1026,19 @@ interface MatchDetailsModalProps {
   match: Match;
   onClose: () => void;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
+  sandboxEnabled: boolean;
+  sandboxEmailSet: Set<string>;
 }
 
-function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) {
+function MatchDetailsModal({
+  match,
+  onClose,
+  isAdmin,
+  isSuperAdmin,
+  sandboxEnabled,
+  sandboxEmailSet,
+}: MatchDetailsModalProps) {
   const { players, goals, updateMatch, deleteGoal } = useData();
   const [view, setView] = useState<'details' | 'teams' | 'result' | 'awards' | 'goal'>('details');
   const [sendingInvites, setSendingInvites] = useState(false);
@@ -872,6 +1068,10 @@ function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) 
     maybe: [],
     out: [],
   };
+  function applySandbox<T extends { email: string }>(recipients: T[]) {
+    if (!isSuperAdmin || !sandboxEnabled) return recipients;
+    return filterRecipientsForSandbox(recipients, sandboxEmailSet);
+  }
 
   (match.rsvps ?? []).forEach((entry) => {
     const player = players.find((candidate) => candidate.id === entry.playerId);
@@ -931,7 +1131,7 @@ function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) 
           location: match.location,
           countdownLabel,
           notes: match.notes,
-          recipients: [
+          recipients: applySandbox([
             ...reminderTeamAPlayers.map((player) => ({
               email: player.email,
               playerName: player.name,
@@ -948,7 +1148,7 @@ function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) 
               opponentTeamName: match.teamA.name,
               opponentList: teamARecipientNames.join(', ') || 'No opposition assigned yet',
             })),
-          ],
+          ]),
         },
       });
       if (result.sentCount > 0) {
@@ -965,11 +1165,29 @@ function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) 
   };
 
   if (view === 'teams') {
-    return <TeamAssignmentModal match={match} onClose={onClose} onBack={() => setView('details')} />;
+    return (
+      <TeamAssignmentModal
+        match={match}
+        onClose={onClose}
+        onBack={() => setView('details')}
+        isSuperAdmin={isSuperAdmin}
+        sandboxEnabled={sandboxEnabled}
+        sandboxEmailSet={sandboxEmailSet}
+      />
+    );
   }
 
   if (view === 'result') {
-    return <RecordResultModal match={match} onClose={onClose} onBack={() => setView('details')} />;
+    return (
+      <RecordResultModal
+        match={match}
+        onClose={onClose}
+        onBack={() => setView('details')}
+        isSuperAdmin={isSuperAdmin}
+        sandboxEnabled={sandboxEnabled}
+        sandboxEmailSet={sandboxEmailSet}
+      />
+    );
   }
 
   if (view === 'awards') {
@@ -1274,6 +1492,14 @@ function MatchDetailsModal({ match, onClose, isAdmin }: MatchDetailsModalProps) 
             })}
           </div>
         </div>
+
+        {isCompleted && match.recap && (
+          <MatchRecapCard
+            recap={match.recap}
+            title="Post-match recap"
+            subtitle="Generated the moment the final score was recorded."
+          />
+        )}
 
         {/* squads */}
         <div>
@@ -1611,6 +1837,9 @@ interface TeamAssignmentModalProps {
   match: Match;
   onClose: () => void;
   onBack: () => void;
+  isSuperAdmin: boolean;
+  sandboxEnabled: boolean;
+  sandboxEmailSet: Set<string>;
 }
 
 interface EditAwardsModalProps {
@@ -1945,7 +2174,14 @@ function QuickGoalModal({ match, onClose, onBack }: QuickGoalModalProps) {
   );
 }
 
-function TeamAssignmentModal({ match, onClose, onBack }: TeamAssignmentModalProps) {
+function TeamAssignmentModal({
+  match,
+  onClose,
+  onBack,
+  isSuperAdmin,
+  sandboxEnabled,
+  sandboxEmailSet,
+}: TeamAssignmentModalProps) {
   const { players, updateMatch } = useData();
   const [teamA, setTeamA] = useState<string[]>(match.teamA.playerIds);
   const [teamB, setTeamB] = useState<string[]>(match.teamB.playerIds);
@@ -2039,7 +2275,9 @@ function TeamAssignmentModal({ match, onClose, onBack }: TeamAssignmentModalProp
         time: match.time,
         location: match.location,
         notes: match.notes,
-        recipients,
+        recipients: isSuperAdmin && sandboxEnabled
+          ? filterRecipientsForSandbox(recipients, sandboxEmailSet)
+          : recipients,
       });
 
       if (emailResult.skippedCount > 0) {
@@ -2294,6 +2532,9 @@ interface RecordResultModalProps {
   match: Match;
   onClose: () => void;
   onBack: () => void;
+  isSuperAdmin: boolean;
+  sandboxEnabled: boolean;
+  sandboxEmailSet: Set<string>;
 }
 
 type GoalDraft = Omit<Goal, 'id' | 'matchId' | 'createdAt'>;
@@ -2301,7 +2542,14 @@ type SaveDraft = SaveEntry;
 const OWN_GOAL_VALUE = '__OWN_GOAL__';
 const NO_ASSIST_VALUE = '__NO_ASSIST__';
 
-function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
+function RecordResultModal({
+  match,
+  onClose,
+  onBack,
+  isSuperAdmin,
+  sandboxEnabled,
+  sandboxEmailSet,
+}: RecordResultModalProps) {
   const { players, goals: allGoals, recordResult } = useData();
   const existingGoals = allGoals
     .filter((goal) => goal.matchId === match.id)
@@ -2391,8 +2639,46 @@ function RecordResultModal({ match, onClose, onBack }: RecordResultModalProps) {
       .filter((entry) => entry.saves > 0);
     setSaving(true);
     try {
-      await recordResult(match.id, goalTotals.teamA, goalTotals.teamB, normalizedGoals, saveEntries, suggestedMvpId);
-      toast.success(match.status === 'completed' ? 'Result updated' : 'Result recorded');
+      const result = await recordResult(match.id, goalTotals.teamA, goalTotals.teamB, normalizedGoals, saveEntries, suggestedMvpId);
+      try {
+        const emailResult = await sendMatchRecapEmails({
+          matchId: match.id,
+          date: formatMatchEmailDate(match.date),
+          time: match.time,
+          location: match.location,
+          recap: result.recap,
+          recipients: isSuperAdmin && sandboxEnabled
+            ? filterRecipientsForSandbox(
+                players
+                  .filter((player) => player.status === 'active')
+                  .map((player) => ({
+                    name: player.name || 'Player',
+                    email: player.email ?? '',
+                  })),
+                sandboxEmailSet
+              )
+            : players
+                .filter((player) => player.status === 'active')
+                .map((player) => ({
+                  name: player.name || 'Player',
+                  email: player.email ?? '',
+                })),
+        });
+
+        if (emailResult.skippedCount > 0) {
+          toast.success(
+            `${match.status === 'completed' ? 'Result updated' : 'Result recorded'}. Recap emailed to ${emailResult.sentCount} players, skipped ${emailResult.skippedCount}.`
+          );
+        } else {
+          toast.success(
+            `${match.status === 'completed' ? 'Result updated' : 'Result recorded'}. Recap emailed to ${emailResult.sentCount} players.`
+          );
+        }
+      } catch (emailError) {
+        console.error(emailError);
+        toast.success(match.status === 'completed' ? 'Result updated' : 'Result recorded');
+        toast.error(emailError instanceof Error ? emailError.message : 'Result saved, but recap emails failed');
+      }
       onClose();
     } catch (err) {
       console.error(err);

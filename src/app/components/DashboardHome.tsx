@@ -6,6 +6,7 @@ import { Calendar, Trophy, Target, Users, TrendingUp, Award, Flame, Link2, Shiel
 import { format } from 'date-fns';
 import { getTotalPoints } from '../../lib/playerStats';
 import { getBestPartnership, getBestPartnerships, getBiggestWin, getDailyStoryFeed, getLatestWeeklyAwardWinners, getTopFormPlayer, getTopFormPlayers } from '../../lib/storyStats';
+import { MatchRecapCard } from './MatchRecapCard';
 
 export function DashboardHome() {
   const { players, matches, goals } = useData();
@@ -173,6 +174,17 @@ export function DashboardHome() {
           ))}
         </div>
       </div>
+
+      {lastMatch?.recap && (
+        <div className="mt-8">
+          <MatchRecapCard
+            recap={lastMatch.recap}
+            compact
+            title="Latest recap"
+            subtitle="The most recent finished match, distilled into one clean story."
+          />
+        </div>
+      )}
 
       <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="panel p-6">
