@@ -234,7 +234,7 @@ export function MatchesScreen() {
       </div>
 
       {isSuperAdmin && (
-        <div className="rounded-[1.4rem] border border-amber-400/20 bg-[linear-gradient(135deg,rgba(245,158,11,0.12),rgba(3,7,18,0.8))] p-5 mb-8 shadow-[0_22px_70px_-36px_rgba(245,158,11,0.65)]">
+        <div className="rounded-[1.4rem] border border-amber-400/20 bg-[linear-gradient(135deg,rgba(245,158,11,0.12),rgba(3,7,18,0.8))] p-5 mb-8">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div className="max-w-2xl">
               <div className="pill mb-3 border-amber-300/20 bg-amber-500/10 text-amber-100">
@@ -251,10 +251,34 @@ export function MatchesScreen() {
               <button
                 type="button"
                 onClick={() => setDevEmailSandbox((current) => ({ ...current, enabled: !current.enabled }))}
-                className={`btn-secondary inline-flex items-center justify-center gap-2 ${devEmailSandbox.enabled ? 'border-amber-300/35 text-amber-100' : ''}`}
+                aria-pressed={devEmailSandbox.enabled}
+                className={`inline-flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition-colors ${
+                  devEmailSandbox.enabled
+                    ? 'border-amber-300/35 bg-amber-400/10 text-amber-50'
+                    : 'border-white/10 bg-black/20 text-white/85 hover:border-white/20'
+                }`}
               >
-                <Shield className="w-4 h-4" />
-                {devEmailSandbox.enabled ? 'Sandbox On' : 'Sandbox Off'}
+                <div className="flex items-center gap-3">
+                  <Shield className="w-4 h-4" />
+                  <div>
+                    <p className="text-sm font-semibold">Email sandbox</p>
+                    <p className="text-[11px] uppercase tracking-[0.22em] opacity-70">
+                      {devEmailSandbox.enabled ? 'On' : 'Off'}
+                    </p>
+                  </div>
+                </div>
+                <span
+                  aria-hidden="true"
+                  className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors ${
+                    devEmailSandbox.enabled ? 'bg-amber-300/80' : 'bg-white/15'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
+                      devEmailSandbox.enabled ? 'translate-x-5' : 'translate-x-0.5'
+                    }`}
+                  />
+                </span>
               </button>
               <button
                 type="button"
@@ -267,52 +291,52 @@ export function MatchesScreen() {
             </div>
           </div>
 
-          <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
-            <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
-              <div>
-                <p className="text-sm font-semibold text-white">Sandbox recipients</p>
-                <p className="text-xs text-amber-50/60">
-                  Pick the few active users who should receive test emails.
+          {devEmailSandbox.enabled && (
+            <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+              <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+                <div>
+                  <p className="text-sm font-semibold text-white">Sandbox recipients</p>
+                  <p className="text-xs text-amber-50/60">
+                    Pick the few active users who should receive test emails.
+                  </p>
+                </div>
+                <p className="text-xs text-amber-100/70">
+                  {sandboxSelectedPlayers.length} selected
                 </p>
               </div>
-              <p className="text-xs text-amber-100/70">
-                {sandboxSelectedPlayers.length} selected
+
+              <div className="flex flex-wrap gap-2">
+                {activePlayersWithEmail.map((player) => {
+                  const isSelected = devEmailSandbox.recipientPlayerIds.includes(player.id);
+
+                  return (
+                    <button
+                      key={player.id}
+                      type="button"
+                      onClick={() => toggleSandboxRecipient(player.id)}
+                      className={`rounded-full border px-3 py-2 text-sm transition-colors ${
+                        isSelected
+                          ? 'border-amber-300/40 bg-amber-400/15 text-amber-50'
+                          : 'border-white/10 bg-white/[0.04] text-white/75 hover:border-white/20'
+                      }`}
+                      title={player.email}
+                    >
+                      {player.name}
+                    </button>
+                  );
+                })}
+                {activePlayersWithEmail.length === 0 && (
+                  <p className="text-sm text-amber-50/60">No active players with email addresses are available yet.</p>
+                )}
+              </div>
+
+              <p className="mt-3 text-xs text-amber-50/55">
+                {sandboxSelectedPlayers.length > 0
+                  ? `Sandbox is active. Emails will only go to ${sandboxSelectedPlayers.map((player) => player.name).join(', ')}.`
+                  : 'Sandbox is active, but no recipients are selected yet, so email sends from this screen will be skipped.'}
               </p>
             </div>
-
-            <div className="flex flex-wrap gap-2">
-              {activePlayersWithEmail.map((player) => {
-                const isSelected = devEmailSandbox.recipientPlayerIds.includes(player.id);
-
-                return (
-                  <button
-                    key={player.id}
-                    type="button"
-                    onClick={() => toggleSandboxRecipient(player.id)}
-                    className={`rounded-full border px-3 py-2 text-sm transition-colors ${
-                      isSelected
-                        ? 'border-amber-300/40 bg-amber-400/15 text-amber-50'
-                        : 'border-white/10 bg-white/[0.04] text-white/75 hover:border-white/20'
-                    }`}
-                    title={player.email}
-                  >
-                    {player.name}
-                  </button>
-                );
-              })}
-              {activePlayersWithEmail.length === 0 && (
-                <p className="text-sm text-amber-50/60">No active players with email addresses are available yet.</p>
-              )}
-            </div>
-
-            <p className="mt-3 text-xs text-amber-50/55">
-              {devEmailSandbox.enabled
-                ? sandboxSelectedPlayers.length > 0
-                  ? `Sandbox is active. Emails will only go to ${sandboxSelectedPlayers.map((player) => player.name).join(', ')}.`
-                  : 'Sandbox is active, but no recipients are selected yet, so email sends from this screen will be skipped.'
-                : 'Sandbox is off. Normal recipients will be used.'}
-            </p>
-          </div>
+          )}
         </div>
       )}
 
