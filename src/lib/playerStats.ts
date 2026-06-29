@@ -18,6 +18,36 @@ export function getTotalPoints(player: Pick<Player, 'totalGoals' | 'totalAssists
   return player.totalGoals + player.totalAssists + player.matchesPlayed + getSavePoints(player.totalSaves);
 }
 
+export function normalizePlayerStats(stats?: Partial<PlayerStatsLine> | null): PlayerStatsLine {
+  return {
+    totalGoals: stats?.totalGoals ?? 0,
+    totalAssists: stats?.totalAssists ?? 0,
+    totalSaves: stats?.totalSaves ?? 0,
+    matchesPlayed: stats?.matchesPlayed ?? 0,
+    wins: stats?.wins ?? 0,
+    losses: stats?.losses ?? 0,
+    draws: stats?.draws ?? 0,
+  };
+}
+
+export function mergePlayerStats(
+  base: Partial<PlayerStatsLine> | null | undefined,
+  adjustment: Partial<PlayerStatsLine> | null | undefined
+): PlayerStatsLine {
+  const normalizedBase = normalizePlayerStats(base);
+  const normalizedAdjustment = normalizePlayerStats(adjustment);
+
+  return {
+    totalGoals: normalizedBase.totalGoals + normalizedAdjustment.totalGoals,
+    totalAssists: normalizedBase.totalAssists + normalizedAdjustment.totalAssists,
+    totalSaves: normalizedBase.totalSaves + normalizedAdjustment.totalSaves,
+    matchesPlayed: normalizedBase.matchesPlayed + normalizedAdjustment.matchesPlayed,
+    wins: normalizedBase.wins + normalizedAdjustment.wins,
+    losses: normalizedBase.losses + normalizedAdjustment.losses,
+    draws: normalizedBase.draws + normalizedAdjustment.draws,
+  };
+}
+
 export function buildPlayerStats(
   players: Array<Pick<Player, 'id'>>,
   matches: Match[],

@@ -1,4 +1,5 @@
 import { useData } from '../../contexts/DataContext';
+import { PlayerStatsLine } from '../../types';
 import { ArrowLeft, Trophy, Target, TrendingUp, Award, Calendar, User, Flame, Medal } from 'lucide-react';
 import { format } from 'date-fns';
 import { getPlayerAwardCounts } from '../../lib/matchAwards';
@@ -39,6 +40,8 @@ export function PlayerProfileScreen({ playerId, onBack }: PlayerProfileScreenPro
   const awardCounts = getPlayerAwardCounts(matches, playerId);
   const totalWeeklyAwards =
     awardCounts.scorer + awardCounts.assist + awardCounts.goalkeeper + awardCounts.mvp;
+  const manualStatsAdjustment = player.manualStatsAdjustment;
+  const hasManualAdjustment = hasNonZeroStatAdjustment(manualStatsAdjustment);
 
   const goalContributionPerMatch =
     player.matchesPlayed > 0
@@ -176,6 +179,24 @@ export function PlayerProfileScreen({ playerId, onBack }: PlayerProfileScreenPro
           </div>
         </div>
       </div>
+
+      {hasManualAdjustment && (
+        <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-6 mb-6">
+          <h2 className="text-xl font-bold text-emerald-900 mb-2">Manual Adjustments</h2>
+          <p className="text-sm text-emerald-800 mb-4">
+            These values are layered on top of match-derived stats.
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+            <AdjustmentPill label="Goals" value={manualStatsAdjustment?.totalGoals ?? 0} />
+            <AdjustmentPill label="Assists" value={manualStatsAdjustment?.totalAssists ?? 0} />
+            <AdjustmentPill label="Saves" value={manualStatsAdjustment?.totalSaves ?? 0} />
+            <AdjustmentPill label="Apps" value={manualStatsAdjustment?.matchesPlayed ?? 0} />
+            <AdjustmentPill label="Wins" value={manualStatsAdjustment?.wins ?? 0} />
+            <AdjustmentPill label="Draws" value={manualStatsAdjustment?.draws ?? 0} />
+            <AdjustmentPill label="Losses" value={manualStatsAdjustment?.losses ?? 0} />
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         <div className="bg-white rounded-xl shadow-md p-6">
@@ -330,4 +351,19 @@ export function PlayerProfileScreen({ playerId, onBack }: PlayerProfileScreenPro
       </div>
     </div>
   );
+}
+
+function AdjustmentPill({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg bg-white px-3 py-2 border border-emerald-200">
+      <p className="text-xs uppercase tracking-wide text-emerald-700">{label}</p>
+      <p className="text-lg font-bold text-emerald-900">{value > 0 ? `+${value}` : value}</p>
+    </div>
+  );
+}
+
+function hasNonZeroStatAdjustment(stats?: PlayerStatsLine) {
+  if (!stats) return false;
+
+  return Object.values(stats).some((value) => value !== 0);
 }
