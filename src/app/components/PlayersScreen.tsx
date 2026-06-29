@@ -1,9 +1,10 @@
 import { useRef, useState } from 'react';
-import { Player } from '../../types';
+import { Player, PlayerStatsLine } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
 import { uploadToImageKit } from '../../lib/imagekit';
 import { getCurrentAwardTitles, getPlayerAwardCounts } from '../../lib/matchAwards';
+import { normalizePlayerStats } from '../../lib/playerStats';
 import { Plus, Edit, Trash2, User, Trophy, Target, TrendingUp, Upload, X, Award, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -58,6 +59,7 @@ export function PlayersScreen({ onSelectPlayer }: PlayersScreenProps) {
             const awardCounts = getPlayerAwardCounts(matches, player.id);
             const totalAwards =
               awardCounts.scorer + awardCounts.assist + awardCounts.goalkeeper + awardCounts.mvp;
+            const hasManualAdjustment = hasNonZeroStatAdjustment(player.manualStatsAdjustment);
             const earnedAwards = [
               {
                 key: 'scorer',
@@ -108,6 +110,9 @@ export function PlayersScreen({ onSelectPlayer }: PlayersScreenProps) {
                       <h3 className="font-bold text-gray-900">{player.name}</h3>
                       {player.nickname && (
                         <p className="text-sm text-gray-500">"{player.nickname}"</p>
+                      )}
+                      {hasManualAdjustment && (
+                        <p className="text-xs font-medium text-emerald-700">Manual stat adjustments applied</p>
                       )}
                     </div>
                   </div>
@@ -315,6 +320,7 @@ interface PlayerFormData {
   position: string;
   status: 'active' | 'inactive';
   avatar: string;
+  manualStatsAdjustment: PlayerStatsLine;
 }
 
 interface PlayerModalProps {
@@ -331,6 +337,7 @@ function PlayerModal({ player, onClose, onSave }: PlayerModalProps) {
     position: player?.position ?? '',
     status: player?.status ?? 'active',
     avatar: player?.avatar ?? '',
+    manualStatsAdjustment: normalizePlayerStats(player?.manualStatsAdjustment),
   });
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -476,11 +483,108 @@ function PlayerModal({ player, onClose, onSave }: PlayerModalProps) {
             </select>
           </div>
 
-          {player && (
-            <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-              Stats are now derived from completed matches, goals, and saves. Edit match results to change player totals.
+          <div className="rounded-xl border border-gray-200 p-4 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900">Manual stat adjustments</h3>
+              <p className="text-xs text-gray-500 mt-1">
+                Match results stay the source of truth. These values are added on top of match-derived totals.
+              </p>
             </div>
-          )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <StatAdjustmentInput
+                label="Goals"
+                value={formData.manualStatsAdjustment.totalGoals}
+                onChange={(value) =>
+                  setFormData({
+                    ...formData,
+                    manualStatsAdjustment: {
+                      ...formData.manualStatsAdjustment,
+                      totalGoals: value,
+                    },
+                  })
+                }
+              />
+              <StatAdjustmentInput
+                label="Assists"
+                value={formData.manualStatsAdjustment.totalAssists}
+                onChange={(value) =>
+                  setFormData({
+                    ...formData,
+                    manualStatsAdjustment: {
+                      ...formData.manualStatsAdjustment,
+                      totalAssists: value,
+                    },
+                  })
+                }
+              />
+              <StatAdjustmentInput
+                label="Saves"
+                value={formData.manualStatsAdjustment.totalSaves}
+                onChange={(value) =>
+                  setFormData({
+                    ...formData,
+                    manualStatsAdjustment: {
+                      ...formData.manualStatsAdjustment,
+                      totalSaves: value,
+                    },
+                  })
+                }
+              />
+              <StatAdjustmentInput
+                label="Appearances"
+                value={formData.manualStatsAdjustment.matchesPlayed}
+                onChange={(value) =>
+                  setFormData({
+                    ...formData,
+                    manualStatsAdjustment: {
+                      ...formData.manualStatsAdjustment,
+                      matchesPlayed: value,
+                    },
+                  })
+                }
+              />
+              <StatAdjustmentInput
+                label="Wins"
+                value={formData.manualStatsAdjustment.wins}
+                onChange={(value) =>
+                  setFormData({
+                    ...formData,
+                    manualStatsAdjustment: {
+                      ...formData.manualStatsAdjustment,
+                      wins: value,
+                    },
+                  })
+                }
+              />
+              <StatAdjustmentInput
+                label="Draws"
+                value={formData.manualStatsAdjustment.draws}
+                onChange={(value) =>
+                  setFormData({
+                    ...formData,
+                    manualStatsAdjustment: {
+                      ...formData.manualStatsAdjustment,
+                      draws: value,
+                    },
+                  })
+                }
+              />
+              <StatAdjustmentInput
+                label="Losses"
+                value={formData.manualStatsAdjustment.losses}
+                onChange={(value) =>
+                  setFormData({
+                    ...formData,
+                    manualStatsAdjustment: {
+                      ...formData.manualStatsAdjustment,
+                      losses: value,
+                    },
+                  })
+                }
+              />
+            </div>
+          </div>
 
           <div className="flex gap-3 pt-4">
             <button
@@ -501,4 +605,32 @@ function PlayerModal({ player, onClose, onSave }: PlayerModalProps) {
       </div>
     </div>
   );
+}
+
+function StatAdjustmentInput({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
+      <input
+        type="number"
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value) || 0)}
+        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
+      />
+    </div>
+  );
+}
+
+function hasNonZeroStatAdjustment(stats?: PlayerStatsLine) {
+  if (!stats) return false;
+
+  return Object.values(stats).some((value) => value !== 0);
 }

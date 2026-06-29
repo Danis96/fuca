@@ -13,6 +13,7 @@ export interface Player {
   wins: number;
   losses: number;
   draws: number;
+  manualStatsAdjustment?: PlayerStatsLine;
   createdAt: Date;
 }
 

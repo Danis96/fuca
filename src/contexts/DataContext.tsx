@@ -8,14 +8,13 @@ import {
   orderBy,
   query,
   serverTimestamp,
-  setDoc,
   updateDoc,
   writeBatch,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { Player, Match, Goal, SaveEntry } from '../types';
+import { Player, Match, Goal, PlayerStatsLine, SaveEntry } from '../types';
 import { getAwardWinners, getResolvedMatchAwards, toFirestoreMatchAwards } from '../lib/matchAwards';
-import { buildPlayerStats } from '../lib/playerStats';
+import { buildPlayerStats, mergePlayerStats, normalizePlayerStats } from '../lib/playerStats';
 
 interface DataContextType {
   players: Player[];
@@ -60,6 +59,10 @@ function toDate(value: any): Date {
   return new Date();
 }
 
+function toPlayerStatsLine(value: any): PlayerStatsLine {
+  return normalizePlayerStats(value);
+}
+
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const [rawPlayers, setRawPlayers] = useState<Player[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
@@ -87,6 +90,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           wins: data.wins ?? 0,
           losses: data.losses ?? 0,
           draws: data.draws ?? 0,
+          manualStatsAdjustment: toPlayerStatsLine(data.manualStatsAdjustment),
           createdAt: toDate(data.createdAt),
         };
       });
@@ -149,11 +153,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const players = useMemo(() => {
-    const statsByPlayerId = buildPlayerStats(rawPlayers, matches, goals);
+    const derivedStatsByPlayerId = buildPlayerStats(rawPlayers, matches, goals);
 
     return rawPlayers.map((player) => ({
       ...player,
-      ...statsByPlayerId[player.id],
+      ...mergePlayerStats(derivedStatsByPlayerId[player.id], player.manualStatsAdjustment),
+      manualStatsAdjustment: toPlayerStatsLine(player.manualStatsAdjustment),
     }));
   }, [rawPlayers, matches, goals]);
 
@@ -181,6 +186,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const addPlayer: DataContextType['addPlayer'] = async (data) => {
     const ref = await addDoc(collection(db, 'players'), {
       ...data,
+      manualStatsAdjustment: toPlayerStatsLine(data.manualStatsAdjustment),
       createdAt: serverTimestamp(),
     });
     return ref.id;
@@ -188,6 +194,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const updatePlayer: DataContextType['updatePlayer'] = async (id, data) => {
     const { id: _omit, createdAt: _c, ...rest } = data as any;
+    if (rest.manualStatsAdjustment) {
+      rest.manualStatsAdjustment = toPlayerStatsLine(rest.manualStatsAdjustment);
+    }
     await updateDoc(doc(db, 'players', id), rest);
   };
 
@@ -253,44 +262,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     const batch = writeBatch(db);
     const existingGoals = goals.filter((goal) => goal.matchId === matchId);
-    const allPlayerIds = Array.from(new Set([...match.teamA.playerIds, ...match.teamB.playerIds]));
-
-    const countGoalsByPlayer = (goalList: Array<Pick<Goal, 'scorerId' | 'assistId'>>) => {
-      const goalCount: Record<string, number> = {};
-      const assistCount: Record<string, number> = {};
-      for (const goal of goalList) {
-        if (goal.scorerId) {
-          goalCount[goal.scorerId] = (goalCount[goal.scorerId] ?? 0) + 1;
-        }
-        if (goal.assistId) {
-          assistCount[goal.assistId] = (assistCount[goal.assistId] ?? 0) + 1;
-        }
-      }
-      return { goalCount, assistCount };
-    };
-
-    const countSavesByPlayer = (saveEntries: SaveEntry[]) => {
-      const saveCount: Record<string, number> = {};
-      for (const entry of saveEntries) {
-        if (!entry.playerId || entry.saves <= 0) continue;
-        saveCount[entry.playerId] = (saveCount[entry.playerId] ?? 0) + entry.saves;
-      }
-      return saveCount;
-    };
-
-    const getWinner = (aScore: number, bScore: number): 'A' | 'B' | 'D' =>
-      aScore > bScore ? 'A' : bScore > aScore ? 'B' : 'D';
-
-    const getResultForPlayer = (playerId: string, winner: 'A' | 'B' | 'D') => {
-      const onTeamA = match.teamA.playerIds.includes(playerId);
-      if (winner === 'D') return 'D' as const;
-      return (winner === 'A') === onTeamA ? 'W' as const : 'L' as const;
-    };
-
-    const oldWinner =
-      match.status === 'completed'
-        ? getWinner(match.teamA.score ?? 0, match.teamB.score ?? 0)
-        : null;
     const goalTotals = newGoals.reduce(
       (totals, goal) => {
         if (goal.team === 'A') {
@@ -307,11 +278,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       throw new Error('Final score must match the logged goals.');
     }
 
-    const newWinner = getWinner(teamAScore, teamBScore);
-    const { goalCount: oldGoalCount, assistCount: oldAssistCount } = countGoalsByPlayer(existingGoals);
-    const { goalCount: newGoalCount, assistCount: newAssistCount } = countGoalsByPlayer(newGoals);
-    const oldSaveCount = countSavesByPlayer(match.saves ?? []);
-    const newSaveCount = countSavesByPlayer(saves);
     const awards = getAwardWinners({
       awards: match.awards,
       goals: newGoals,
@@ -345,43 +311,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (g.ownGoal !== true && g.assistId !== undefined) payload.assistId = g.assistId;
       if (g.minute !== undefined) payload.minute = g.minute;
       batch.set(ref, payload);
-    }
-
-    for (const playerId of allPlayerIds) {
-      const player = rawPlayers.find((entry) => entry.id === playerId);
-      if (!player) continue;
-
-      const oldResult = oldWinner ? getResultForPlayer(playerId, oldWinner) : null;
-      const newResult = getResultForPlayer(playerId, newWinner);
-
-      batch.update(doc(db, 'players', playerId), {
-        matchesPlayed:
-          (player.matchesPlayed ?? 0) + (match.status === 'completed' ? 0 : 1),
-        wins:
-          (player.wins ?? 0)
-          - (oldResult === 'W' ? 1 : 0)
-          + (newResult === 'W' ? 1 : 0),
-        losses:
-          (player.losses ?? 0)
-          - (oldResult === 'L' ? 1 : 0)
-          + (newResult === 'L' ? 1 : 0),
-        draws:
-          (player.draws ?? 0)
-          - (oldResult === 'D' ? 1 : 0)
-          + (newResult === 'D' ? 1 : 0),
-        totalGoals:
-          (player.totalGoals ?? 0)
-          - (oldGoalCount[playerId] ?? 0)
-          + (newGoalCount[playerId] ?? 0),
-        totalAssists:
-          (player.totalAssists ?? 0)
-          - (oldAssistCount[playerId] ?? 0)
-          + (newAssistCount[playerId] ?? 0),
-        totalSaves:
-          (player.totalSaves ?? 0)
-          - (oldSaveCount[playerId] ?? 0)
-          + (newSaveCount[playerId] ?? 0),
-      });
     }
 
     await batch.commit();
