@@ -24,6 +24,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/send-match-recap"
+  to = "/.netlify/functions/send-match-recap"
+  status = 200
+
+[[redirects]]
   from = "/api/match-calendar.ics"
   to = "/.netlify/functions/match-calendar"
   status = 200

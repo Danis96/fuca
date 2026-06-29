@@ -8,14 +8,16 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db, googleProvider } from '../lib/firebase';
-import { isAdminEmail } from '../lib/admins';
+import { isAdminEmail, isSuperAdminEmail } from '../lib/admins';
+
+type UserRole = 'superadmin' | 'admin' | 'player';
 
 interface UserProfile {
   uid: string;
   email: string;
   displayName: string;
   photoURL: string | null;
-  role: 'admin' | 'player';
+  role: UserRole;
   playerId: string | null;
 }
 
@@ -27,6 +29,7 @@ interface AuthContextType {
   signInWithEmail: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -40,7 +43,7 @@ export function useAuth() {
 }
 
 async function ensureUserDoc(user: User): Promise<UserProfile> {
-  const role: 'admin' | 'player' = isAdminEmail(user.email) ? 'admin' : 'player';
+  const role: UserRole = isSuperAdminEmail(user.email) ? 'superadmin' : isAdminEmail(user.email) ? 'admin' : 'player';
   const userRef = doc(db, 'users', user.uid);
   const snap = await getDoc(userRef);
 
@@ -119,7 +122,7 @@ async function ensureUserDoc(user: User): Promise<UserProfile> {
     email: data.email ?? user.email ?? '',
     displayName: data.displayName ?? user.displayName ?? '',
     photoURL: data.photoURL ?? user.photoURL ?? null,
-    role: data.role ?? role,
+    role: (data.role ?? role) as UserRole,
     playerId: data.playerId ?? (role === 'player' ? user.uid : null),
   };
 }
@@ -164,10 +167,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const isAdmin = userProfile?.role === 'admin';
+  const isSuperAdmin = userProfile?.role === 'superadmin';
 
   return (
     <AuthContext.Provider
-      value={{ user, userProfile, loading, signInWithGoogle, signInWithEmail, signOut, isAdmin }}
+      value={{
+        user,
+        userProfile,
+        loading,
+        signInWithGoogle,
+        signInWithEmail,
+        signOut,
+        isAdmin: Boolean(isAdmin || isSuperAdmin),
+        isSuperAdmin: Boolean(isSuperAdmin),
+      }}
     >
       {children}
     </AuthContext.Provider>

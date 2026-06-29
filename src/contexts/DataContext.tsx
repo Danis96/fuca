@@ -12,9 +12,14 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { Player, Match, Goal, PlayerStatsLine, SaveEntry } from '../types';
+import { MatchRecap, Player, Match, Goal, PlayerStatsLine, SaveEntry } from '../types';
 import { getAwardWinners, getResolvedMatchAwards, toFirestoreMatchAwards } from '../lib/matchAwards';
+import { buildMatchRecap } from '../lib/matchRecap';
 import { buildPlayerStats, mergePlayerStats, normalizePlayerStats } from '../lib/playerStats';
+
+interface RecordResultOutcome {
+  recap: MatchRecap;
+}
 
 interface DataContextType {
   players: Player[];
@@ -40,7 +45,7 @@ interface DataContextType {
     goals: Array<Omit<Goal, 'id' | 'matchId' | 'createdAt'>>,
     saves: SaveEntry[],
     mvpId?: string
-  ) => Promise<void>;
+  ) => Promise<RecordResultOutcome>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -143,6 +148,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             : [],
           mvpId: data.mvpId ?? undefined,
           awards: getResolvedMatchAwards(data.awards),
+          recap: data.recap ?? undefined,
           createdAt: toDate(data.createdAt),
         };
       });
@@ -283,7 +289,32 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       goals: newGoals,
       saves,
       suggestedMvpId: mvpId,
-      players: rawPlayers,
+      players,
+    });
+    const completedMatch: Match = {
+      ...match,
+      status: 'completed',
+      teamA: {
+        ...match.teamA,
+        score: teamAScore,
+      },
+      teamB: {
+        ...match.teamB,
+        score: teamBScore,
+      },
+      saves,
+      mvpId,
+      awards,
+    };
+    const updatedMatches = [...matches.filter((entry) => entry.id !== matchId), completedMatch];
+    const recap = buildMatchRecap({
+      match: completedMatch,
+      players,
+      matches: updatedMatches,
+      goals: newGoals,
+      awards,
+      saves,
+      mvpId,
     });
 
     batch.update(doc(db, 'matches', matchId), {
@@ -293,6 +324,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       saves,
       mvpId: mvpId ?? null,
       awards: toFirestoreMatchAwards(awards),
+      recap,
     });
 
     for (const existingGoal of existingGoals) {
@@ -314,6 +346,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
 
     await batch.commit();
+    return { recap };
   };
 
   const loading = loadingPlayers || loadingMatches || loadingGoals;
