@@ -160,7 +160,7 @@ export function PlayersScreen({ onSelectPlayer }: PlayersScreenProps) {
                   {player.cancellations > 0 && (
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-600">Otkazao</span>
-                      <span className="font-medium text-rose-600">{player.cancellations}×</span>
+                      <span className="font-medium text-rose-600">{player.cancellations}× · −{player.cancellations} pts</span>
                     </div>
                   )}
                 </div>

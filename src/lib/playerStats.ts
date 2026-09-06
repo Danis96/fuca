@@ -15,8 +15,14 @@ export function getSavePoints(totalSaves: number) {
   return Math.floor(totalSaves / 4);
 }
 
-export function getTotalPoints(player: Pick<Player, 'totalGoals' | 'totalAssists' | 'totalSaves' | 'matchesPlayed'>) {
-  return player.totalGoals + player.totalAssists + player.matchesPlayed + getSavePoints(player.totalSaves);
+export function getTotalPoints(
+  player: Pick<Player, 'totalGoals' | 'totalAssists' | 'totalSaves' | 'matchesPlayed' | 'cancellations'>
+) {
+  return player.totalGoals +
+    player.totalAssists +
+    player.matchesPlayed +
+    getSavePoints(player.totalSaves) -
+    player.cancellations;
 }
 
 export function normalizePlayerStats(stats?: Partial<PlayerStatsLine> | null): PlayerStatsLine {

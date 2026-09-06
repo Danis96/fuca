@@ -91,7 +91,7 @@ export function LeaderboardScreen({ onSelectPlayer }: LeaderboardScreenProps) {
     <div className="p-6 max-w-4xl mx-auto">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Leaderboard</h1>
-        <p className="text-gray-600">Top performers · Sezona {activeSeason.name}</p>
+        <p className="text-gray-600">Top performers · Sezona {activeSeason.name} · svaki “Otkazao” nosi −1 bod</p>
       </div>
 
       <div className="bg-white rounded-xl shadow-md overflow-hidden">

@@ -276,7 +276,7 @@ export function SeasonsScreen({ onSelectPlayer }: SeasonsScreenProps) {
                 <h2 className="text-xl font-bold">
                   {selectedSeason.status === 'active' ? 'Live standings' : 'Final standings'}
                 </h2>
-                <p className="text-sm text-gray-500">Points, then goals, assists and wins decide tied places.</p>
+                <p className="text-sm text-gray-500">Points include a −1 penalty for every cancellation; ties use goals, assists and wins.</p>
               </div>
               <Award className="w-5 h-5 text-emerald-300" />
             </div>
@@ -366,7 +366,10 @@ function FeaturedPlayer({ player, label, onClick }: { player?: Player; label: st
       <div className="min-w-0 flex-1">
         <p className="text-[10px] uppercase tracking-[0.22em] text-amber-300">{label}</p>
         <p className="text-xl font-bold truncate">{player.name}</p>
-        <p className="text-sm text-gray-500">{getTotalPoints(player)} pts · {player.totalGoals} G · {player.totalAssists} A</p>
+        <p className="text-sm text-gray-500">
+          {getTotalPoints(player)} pts · {player.totalGoals} G · {player.totalAssists} A
+          {player.cancellations > 0 ? ` · −${player.cancellations} OTK` : ''}
+        </p>
       </div>
     </button>
   );

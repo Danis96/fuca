@@ -178,6 +178,10 @@ export function PlayerProfileScreen({ playerId, seasonId, onBack }: PlayerProfil
               <span className="text-gray-700">Save Points</span>
               <span className="text-2xl font-bold text-cyan-600">{getSavePoints(player.totalSaves)}</span>
             </div>
+            <div className="flex items-center justify-between">
+              <span className="text-gray-700">Otkazao Penalty</span>
+              <span className="text-2xl font-bold text-rose-600">−{player.cancellations}</span>
+            </div>
             <div className="pt-4 border-t border-gray-200">
               <div className="flex items-center justify-between">
                 <span className="text-gray-700">Contribution/Match</span>
