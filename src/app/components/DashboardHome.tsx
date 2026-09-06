@@ -8,7 +8,7 @@ import { getTotalPoints } from '../../lib/playerStats';
 import { getBestPartnership, getBestPartnerships, getBiggestWin, getDailyStoryFeed, getLatestWeeklyAwardWinners, getTopFormPlayer, getTopFormPlayers } from '../../lib/storyStats';
 
 export function DashboardHome() {
-  const { players, matches, goals } = useData();
+  const { players, matches, goals, activeSeason } = useData();
   const { userProfile } = useAuth();
 
   const upcomingMatch = matches.find((m) => m.status === 'scheduled');
@@ -92,7 +92,7 @@ export function DashboardHome() {
         <div>
           <div className="pill mb-3">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-            Live season
+            Live · Sezona {activeSeason.name}
           </div>
           <h1 className="text-4xl font-bold mb-1 tracking-tight">
             Welcome back{userProfile?.displayName ? `, ${userProfile.displayName.split(' ')[0]}` : ''}

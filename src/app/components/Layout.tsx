@@ -1,7 +1,7 @@
 import { ReactNode, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../../contexts/AuthContext';
-import { Home, Users, Calendar, Trophy, LogOut, Menu, X } from 'lucide-react';
+import { Home, Users, Calendar, Trophy, LogOut, Menu, X, History } from 'lucide-react';
 
 interface LayoutProps {
   children: ReactNode;
@@ -18,6 +18,7 @@ export function Layout({ children, currentPage, onNavigate }: LayoutProps) {
     { name: 'Players', icon: Users, page: 'players' },
     { name: 'Matches', icon: Calendar, page: 'matches' },
     { name: 'Leaderboard', icon: Trophy, page: 'leaderboard' },
+    { name: 'Seasons', icon: History, page: 'seasons' },
   ];
 
   const handleSignOut = async () => {
@@ -49,7 +50,7 @@ export function Layout({ children, currentPage, onNavigate }: LayoutProps) {
                 </div>
               </motion.div>
 
-              <div className="hidden md:flex ml-10 space-x-1">
+              <div className="hidden lg:flex ml-8 space-x-1">
                 {navigation.map((item) => {
                   const Icon = item.icon;
                   const active = currentPage === item.page;
@@ -80,7 +81,7 @@ export function Layout({ children, currentPage, onNavigate }: LayoutProps) {
             </div>
 
             <div className="flex items-center gap-3">
-              <div className="hidden md:flex user-chip">
+              <div className="hidden lg:flex user-chip">
                 <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-400 to-violet-600 flex items-center justify-center text-violet-950 font-bold text-sm">
                   {userProfile?.email?.charAt(0).toUpperCase() ?? '?'}
                 </div>
@@ -93,7 +94,7 @@ export function Layout({ children, currentPage, onNavigate }: LayoutProps) {
               <motion.button
                 onClick={handleSignOut}
                 title="Sign out"
-                className="hidden md:flex icon-action"
+                className="hidden lg:flex icon-action"
                 whileHover={{ scale: 1.08 }}
                 whileTap={{ scale: 0.92 }}
               >
@@ -102,7 +103,7 @@ export function Layout({ children, currentPage, onNavigate }: LayoutProps) {
 
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="md:hidden p-2 text-gray-600 hover:text-gray-900 relative"
+                className="lg:hidden p-2 text-gray-600 hover:text-gray-900 relative"
               >
                 <AnimatePresence mode="wait" initial={false}>
                   <motion.span
@@ -129,7 +130,7 @@ export function Layout({ children, currentPage, onNavigate }: LayoutProps) {
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
               transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-              className="md:hidden border-t border-gray-200 overflow-hidden"
+            className="lg:hidden border-t border-gray-200 overflow-hidden"
             >
               <div className="px-4 py-3 space-y-1">
                 {navigation.map((item, idx) => {

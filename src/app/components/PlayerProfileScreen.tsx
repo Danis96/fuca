@@ -8,11 +8,17 @@ import { getPlayerCurrentStreak, getPlayerMvpCount, getPlayerRecentForm } from '
 
 interface PlayerProfileScreenProps {
   playerId: string;
+  seasonId?: string;
   onBack: () => void;
 }
 
-export function PlayerProfileScreen({ playerId, onBack }: PlayerProfileScreenProps) {
-  const { players, matches, goals } = useData();
+export function PlayerProfileScreen({ playerId, seasonId, onBack }: PlayerProfileScreenProps) {
+  const { players: activePlayers, matches: activeMatches, goals: activeGoals, allMatches, allGoals, activeSeason, seasons, getPlayersForSeason } = useData();
+  const viewedSeason = seasons.find((season) => season.id === seasonId) ?? activeSeason;
+  const players = seasonId ? getPlayersForSeason(viewedSeason.id) : activePlayers;
+  const matches = seasonId ? allMatches.filter((match) => match.seasonId === viewedSeason.id) : activeMatches;
+  const viewedMatchIds = new Set(matches.map((match) => match.id));
+  const goals = seasonId ? allGoals.filter((goal) => viewedMatchIds.has(goal.matchId)) : activeGoals;
   const player = players.find((p) => p.id === playerId);
 
   if (!player) {
@@ -86,6 +92,7 @@ export function PlayerProfileScreen({ playerId, onBack }: PlayerProfileScreenPro
           </div>
           <div className="flex-1">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">{player.name}</h1>
+            <p className="text-sm text-emerald-600 font-medium mb-2">Sezona {viewedSeason.name}</p>
             {player.nickname && (
               <p className="text-xl text-gray-600 mb-2">"{player.nickname}"</p>
             )}

@@ -21,7 +21,7 @@ interface LeaderboardScreenProps {
 }
 
 export function LeaderboardScreen({ onSelectPlayer }: LeaderboardScreenProps) {
-  const { players, matches } = useData();
+  const { players, matches, activeSeason } = useData();
   const [activeTab, setActiveTab] = useState<LeaderboardTab>('total');
 
   const sorted = [...players].sort((a, b) => {
@@ -87,7 +87,7 @@ export function LeaderboardScreen({ onSelectPlayer }: LeaderboardScreenProps) {
     <div className="p-6 max-w-4xl mx-auto">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Leaderboard</h1>
-        <p className="text-gray-600">Top performers of the season</p>
+        <p className="text-gray-600">Top performers · Sezona {activeSeason.name}</p>
       </div>
 
       <div className="bg-white rounded-xl shadow-md overflow-hidden">

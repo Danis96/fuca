@@ -11,6 +11,7 @@ import { MatchesScreen } from './components/MatchesScreen';
 import { LeaderboardScreen } from './components/LeaderboardScreen';
 import { PlayerProfileScreen } from './components/PlayerProfileScreen';
 import { MatchRsvpScreen } from './components/MatchRsvpScreen';
+import { SeasonsScreen } from './components/SeasonsScreen';
 import { Toaster } from 'sonner';
 
 function getRsvpMatchId() {
@@ -33,6 +34,7 @@ function AppContent() {
   const { user, loading } = useAuth();
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
+  const [selectedPlayerSeasonId, setSelectedPlayerSeasonId] = useState<string | null>(null);
   const [rsvpMatchId, setRsvpMatchId] = useState<string | null>(() => getRsvpMatchId());
 
   if (loading) {
@@ -92,7 +94,11 @@ function AppContent() {
       return (
         <PlayerProfileScreen
           playerId={selectedPlayerId}
-          onBack={() => setSelectedPlayerId(null)}
+          seasonId={selectedPlayerSeasonId ?? undefined}
+          onBack={() => {
+            setSelectedPlayerId(null);
+            setSelectedPlayerSeasonId(null);
+          }}
         />
       );
     }
@@ -101,11 +107,13 @@ function AppContent() {
       case 'dashboard':
         return <DashboardHome />;
       case 'players':
-        return <PlayersScreen onSelectPlayer={setSelectedPlayerId} />;
+        return <PlayersScreen onSelectPlayer={(id) => { setSelectedPlayerSeasonId(null); setSelectedPlayerId(id); }} />;
       case 'matches':
         return <MatchesScreen />;
       case 'leaderboard':
-        return <LeaderboardScreen onSelectPlayer={setSelectedPlayerId} />;
+        return <LeaderboardScreen onSelectPlayer={(id) => { setSelectedPlayerSeasonId(null); setSelectedPlayerId(id); }} />;
+      case 'seasons':
+        return <SeasonsScreen onSelectPlayer={(id, seasonId) => { setSelectedPlayerSeasonId(seasonId); setSelectedPlayerId(id); }} />;
       default:
         return <DashboardHome />;
     }
@@ -113,7 +121,7 @@ function AppContent() {
 
   return (
     <DataProvider>
-      <Layout currentPage={currentPage} onNavigate={(page) => { setSelectedPlayerId(null); setCurrentPage(page); }}>
+      <Layout currentPage={currentPage} onNavigate={(page) => { setSelectedPlayerId(null); setSelectedPlayerSeasonId(null); setCurrentPage(page); }}>
         <AnimatePresence mode="wait">
           <motion.div
             key={pageKey}

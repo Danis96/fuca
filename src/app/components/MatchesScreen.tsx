@@ -159,7 +159,7 @@ function filterRecipientsForSandbox<T extends { email: string }>(
 
 export function MatchesScreen() {
   const { isAdmin, isSuperAdmin } = useAuth();
-  const { matches, players, addMatch, deleteMatch } = useData();
+  const { matches, players, activeSeason, addMatch, deleteMatch } = useData();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [createMatchPreset, setCreateMatchPreset] = useState<MatchDraftPreset | null>(null);
@@ -171,7 +171,7 @@ export function MatchesScreen() {
   const sandboxSelectedPlayers = activePlayersWithEmail.filter((player) =>
     devEmailSandbox.recipientPlayerIds.includes(player.id)
   );
-  const sandboxEmailSet = new Set(
+  const sandboxEmailSet = new Set<string>(
     sandboxSelectedPlayers.map((player) => player.email.trim().toLowerCase())
   );
 
@@ -215,7 +215,7 @@ export function MatchesScreen() {
         <div>
           <div className="pill mb-3">
             <Calendar className="w-3 h-3" />
-            Schedule
+            Sezona {activeSeason.name}
           </div>
           <h1 className="text-4xl font-bold tracking-tight mb-1">Matches</h1>
           <p className="text-gray-500">View and manage Sunday League fixtures.</p>
@@ -638,7 +638,7 @@ function ModalShell({ title, subtitle, onClose, children, footer, maxWidth = '32
 
 interface CreateMatchModalProps {
   onClose: () => void;
-  onSave: (data: Omit<Match, 'id' | 'createdAt'>) => Promise<unknown> | unknown;
+  onSave: (data: Omit<Match, 'id' | 'seasonId' | 'createdAt'>) => Promise<unknown> | unknown;
   initialPreset?: MatchDraftPreset | null;
 }
 
@@ -1081,7 +1081,7 @@ function MatchDetailsModal({
     .filter((goal) => goal.matchId === match.id)
     .sort((a, b) => (a.minute ?? 999) - (b.minute ?? 999));
   const mvp = match.mvpId ? players.find((player) => player.id === match.mvpId) : null;
-  const awards = getResolvedMatchAwards(match.awards, players);
+  const awards = getResolvedMatchAwards(match.awards);
   const rsvpCounts = {
     in: match.rsvps?.filter((entry) => entry.status === 'in').length ?? 0,
     maybe: match.rsvps?.filter((entry) => entry.status === 'maybe').length ?? 0,
@@ -2624,7 +2624,7 @@ function RecordResultModal({
   const suggestedMvpId = getSuggestedMvpId({
     playerIds: [...match.teamA.playerIds, ...match.teamB.playerIds],
     goals: normalizedGoals,
-    saves: Object.entries(saves)
+    saves: (Object.entries(saves) as Array<[string, number]>)
       .map(([playerId, total]) => ({ playerId, saves: total }))
       .filter((entry) => entry.saves > 0),
   });
@@ -2634,7 +2634,7 @@ function RecordResultModal({
   const suggestedAwards = getAwardWinners({
     awards: match.awards,
     goals: normalizedGoals,
-    saves: Object.entries(saves)
+    saves: (Object.entries(saves) as Array<[string, number]>)
       .map(([playerId, total]) => ({ playerId, saves: total }))
       .filter((entry) => entry.saves > 0),
     suggestedMvpId,
@@ -2658,7 +2658,7 @@ function RecordResultModal({
       return;
     }
 
-    const saveEntries: SaveDraft[] = Object.entries(saves)
+    const saveEntries: SaveDraft[] = (Object.entries(saves) as Array<[string, number]>)
       .map(([playerId, total]) => ({ playerId, saves: total }))
       .filter((entry) => entry.saves > 0);
     setSaving(true);

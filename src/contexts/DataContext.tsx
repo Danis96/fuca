@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import {
   addDoc,
   collection,
@@ -8,30 +8,39 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
   writeBatch,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { MatchRecap, Player, Match, Goal, PlayerStatsLine, SaveEntry } from '../types';
+import { MatchRecap, Player, Match, Goal, PlayerStatsLine, SaveEntry, Season, SeasonAwards } from '../types';
 import { getAwardWinners, getResolvedMatchAwards, toFirestoreMatchAwards } from '../lib/matchAwards';
 import { buildMatchRecap } from '../lib/matchRecap';
-import { buildPlayerStats, mergePlayerStats, normalizePlayerStats } from '../lib/playerStats';
+import { buildPlayerStats, getTotalPoints, mergePlayerStats, normalizePlayerStats } from '../lib/playerStats';
 
 interface RecordResultOutcome {
   recap: MatchRecap;
 }
 
 interface DataContextType {
+  seasons: Season[];
+  activeSeason: Season;
+  allMatches: Match[];
+  allGoals: Goal[];
   players: Player[];
   matches: Match[];
   goals: Goal[];
   loading: boolean;
 
+  getPlayersForSeason: (seasonId: string) => Player[];
+  startNewSeason: (name: string) => Promise<string>;
+  updateSeasonAwards: (seasonId: string, awards: SeasonAwards) => Promise<void>;
+
   addPlayer: (data: Omit<Player, 'id' | 'createdAt'>) => Promise<string>;
   updatePlayer: (id: string, data: Partial<Player>) => Promise<void>;
   deletePlayer: (id: string) => Promise<void>;
 
-  addMatch: (data: Omit<Match, 'id' | 'createdAt'>) => Promise<string>;
+  addMatch: (data: Omit<Match, 'id' | 'seasonId' | 'createdAt'>) => Promise<string>;
   updateMatch: (id: string, data: Partial<Match>) => Promise<void>;
   deleteMatch: (id: string) => Promise<void>;
 
@@ -49,6 +58,18 @@ interface DataContextType {
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
+
+export const LEGACY_SEASON_ID = 'season-25-26';
+
+const LEGACY_SEASON: Season = {
+  id: LEGACY_SEASON_ID,
+  name: '25/26',
+  startYear: 2025,
+  endYear: 2026,
+  status: 'active',
+  awards: { teamOfTheSeasonPlayerIds: [] },
+  createdAt: new Date('2025-07-01T00:00:00.000Z'),
+};
 
 export function useData() {
   const ctx = useContext(DataContext);
@@ -68,13 +89,38 @@ function toPlayerStatsLine(value: any): PlayerStatsLine {
   return normalizePlayerStats(value);
 }
 
+function getSeasonAdjustment(player: Player, seasonId: string) {
+  const seasonAdjustment = player.seasonStatsAdjustments?.[seasonId];
+  if (seasonAdjustment) return toPlayerStatsLine(seasonAdjustment);
+  if (seasonId === LEGACY_SEASON_ID) return toPlayerStatsLine(player.manualStatsAdjustment);
+  return toPlayerStatsLine(undefined);
+}
+
+function parseSeasonName(name: string) {
+  const normalized = name.trim().replace(/^sezona\s+/i, '');
+  const match = normalized.match(/^(\d{2})\/(\d{2})$/);
+  if (!match) {
+    throw new Error('Naziv sezone mora biti u formatu 26/27.');
+  }
+
+  const startYear = 2000 + Number(match[1]);
+  const endYear = 2000 + Number(match[2]);
+  if (endYear !== startYear + 1) {
+    throw new Error('Sezona mora obuhvatati dvije uzastopne godine.');
+  }
+
+  return { name: normalized, startYear, endYear, id: `season-${match[1]}-${match[2]}` };
+}
+
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const [rawPlayers, setRawPlayers] = useState<Player[]>([]);
-  const [matches, setMatches] = useState<Match[]>([]);
-  const [goals, setGoals] = useState<Goal[]>([]);
+  const [allMatches, setAllMatches] = useState<Match[]>([]);
+  const [allGoals, setAllGoals] = useState<Goal[]>([]);
+  const [storedSeasons, setStoredSeasons] = useState<Season[]>([]);
   const [loadingPlayers, setLoadingPlayers] = useState(true);
   const [loadingMatches, setLoadingMatches] = useState(true);
   const [loadingGoals, setLoadingGoals] = useState(true);
+  const [loadingSeasons, setLoadingSeasons] = useState(true);
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'players'), (snap) => {
@@ -96,6 +142,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           losses: data.losses ?? 0,
           draws: data.draws ?? 0,
           manualStatsAdjustment: toPlayerStatsLine(data.manualStatsAdjustment),
+          seasonStatsAdjustments: Object.fromEntries(
+            Object.entries(data.seasonStatsAdjustments ?? {}).map(([seasonId, stats]) => [
+              seasonId,
+              toPlayerStatsLine(stats),
+            ])
+          ),
           createdAt: toDate(data.createdAt),
         };
       });
@@ -106,12 +158,46 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    const unsub = onSnapshot(
+      collection(db, 'seasons'),
+      (snap) => {
+        const list: Season[] = snap.docs.map((d) => {
+          const data = d.data() as any;
+          return {
+            id: d.id,
+            name: data.name ?? d.id,
+            startYear: data.startYear ?? 0,
+            endYear: data.endYear ?? 0,
+            status: data.status === 'completed' ? 'completed' : 'active',
+            awards: {
+              playerOfTheSeasonId: data.awards?.playerOfTheSeasonId ?? undefined,
+              teamOfTheSeasonPlayerIds: Array.isArray(data.awards?.teamOfTheSeasonPlayerIds)
+                ? data.awards.teamOfTheSeasonPlayerIds
+                : [],
+            },
+            createdAt: toDate(data.createdAt),
+            completedAt: data.completedAt ? toDate(data.completedAt) : undefined,
+          };
+        });
+        setStoredSeasons(list);
+        setLoadingSeasons(false);
+      },
+      (error) => {
+        console.error('Failed to load seasons', error);
+        setLoadingSeasons(false);
+      }
+    );
+    return unsub;
+  }, []);
+
+  useEffect(() => {
     const q = query(collection(db, 'matches'), orderBy('date', 'desc'));
     const unsub = onSnapshot(q, (snap) => {
       const list: Match[] = snap.docs.map((d) => {
         const data = d.data() as any;
         return {
           id: d.id,
+          seasonId: data.seasonId ?? LEGACY_SEASON_ID,
           date: toDate(data.date),
           time: data.time ?? '',
           location: data.location ?? '',
@@ -152,21 +238,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           createdAt: toDate(data.createdAt),
         };
       });
-      setMatches(list);
+      setAllMatches(list);
       setLoadingMatches(false);
     });
     return unsub;
   }, []);
-
-  const players = useMemo(() => {
-    const derivedStatsByPlayerId = buildPlayerStats(rawPlayers, matches, goals);
-
-    return rawPlayers.map((player) => ({
-      ...player,
-      ...mergePlayerStats(derivedStatsByPlayerId[player.id], player.manualStatsAdjustment),
-      manualStatsAdjustment: toPlayerStatsLine(player.manualStatsAdjustment),
-    }));
-  }, [rawPlayers, matches, goals]);
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'goals'), (snap) => {
@@ -183,16 +259,57 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           createdAt: toDate(data.createdAt),
         };
       });
-      setGoals(list);
+      setAllGoals(list);
       setLoadingGoals(false);
     });
     return unsub;
   }, []);
 
+  const seasons = useMemo(() => {
+    const hasLegacySeason = storedSeasons.some((season) => season.id === LEGACY_SEASON_ID);
+    const list = hasLegacySeason ? storedSeasons : [...storedSeasons, LEGACY_SEASON];
+    return [...list].sort((a, b) => b.startYear - a.startYear);
+  }, [storedSeasons]);
+
+  const activeSeason = useMemo(
+    () => seasons.find((season) => season.status === 'active') ?? seasons[0] ?? LEGACY_SEASON,
+    [seasons]
+  );
+
+  const matches = useMemo(
+    () => allMatches.filter((match) => match.seasonId === activeSeason.id),
+    [activeSeason.id, allMatches]
+  );
+  const activeMatchIds = useMemo(() => new Set(matches.map((match) => match.id)), [matches]);
+  const goals = useMemo(
+    () => allGoals.filter((goal) => activeMatchIds.has(goal.matchId)),
+    [activeMatchIds, allGoals]
+  );
+
+  const buildPlayersForSeason = useCallback((seasonId: string) => {
+    const seasonMatches = allMatches.filter((match) => match.seasonId === seasonId);
+    const matchIds = new Set(seasonMatches.map((match) => match.id));
+    const seasonGoals = allGoals.filter((goal) => matchIds.has(goal.matchId));
+    const derivedStatsByPlayerId = buildPlayerStats(rawPlayers, seasonMatches, seasonGoals);
+
+    return rawPlayers.map((player) => ({
+      ...player,
+      ...mergePlayerStats(derivedStatsByPlayerId[player.id], getSeasonAdjustment(player, seasonId)),
+      manualStatsAdjustment: getSeasonAdjustment(player, seasonId),
+    }));
+  }, [allGoals, allMatches, rawPlayers]);
+
+  const players = useMemo(
+    () => buildPlayersForSeason(activeSeason.id),
+    [activeSeason.id, buildPlayersForSeason]
+  );
+
   const addPlayer: DataContextType['addPlayer'] = async (data) => {
+    const activeAdjustment = toPlayerStatsLine(data.manualStatsAdjustment);
     const ref = await addDoc(collection(db, 'players'), {
       ...data,
-      manualStatsAdjustment: toPlayerStatsLine(data.manualStatsAdjustment),
+      manualStatsAdjustment: toPlayerStatsLine(undefined),
+      seasonStatsAdjustments: { [activeSeason.id]: activeAdjustment },
       createdAt: serverTimestamp(),
     });
     return ref.id;
@@ -201,12 +318,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const updatePlayer: DataContextType['updatePlayer'] = async (id, data) => {
     const { id: _omit, createdAt: _c, ...rest } = data as any;
     if (rest.manualStatsAdjustment) {
-      rest.manualStatsAdjustment = toPlayerStatsLine(rest.manualStatsAdjustment);
+      rest[`seasonStatsAdjustments.${activeSeason.id}`] = toPlayerStatsLine(rest.manualStatsAdjustment);
+      delete rest.manualStatsAdjustment;
     }
     await updateDoc(doc(db, 'players', id), rest);
   };
 
   const deletePlayer: DataContextType['deletePlayer'] = async (id) => {
+    const hasMatchHistory = allMatches.some(
+      (match) => match.teamA.playerIds.includes(id) || match.teamB.playerIds.includes(id)
+    );
+    if (hasMatchHistory) {
+      throw new Error('This player has season history. Mark the player inactive instead of deleting them.');
+    }
     const batch = writeBatch(db);
     batch.delete(doc(db, 'players', id));
     batch.delete(doc(db, 'users', id));
@@ -217,6 +341,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const awards = getResolvedMatchAwards(data.awards);
     const ref = await addDoc(collection(db, 'matches'), {
       ...data,
+      seasonId: activeSeason.id,
       awards: toFirestoreMatchAwards(awards),
       date: data.date,
       createdAt: serverTimestamp(),
@@ -349,15 +474,84 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     return { recap };
   };
 
-  const loading = loadingPlayers || loadingMatches || loadingGoals;
+  const startNewSeason: DataContextType['startNewSeason'] = async (requestedName) => {
+    const parsed = parseSeasonName(requestedName);
+    if (seasons.some((season) => season.id === parsed.id)) {
+      throw new Error(`Sezona ${parsed.name} već postoji.`);
+    }
+    if (matches.some((match) => match.status === 'scheduled')) {
+      throw new Error('Finish, cancel or delete scheduled matches before starting a new season.');
+    }
+
+    const pointsLeader = [...players]
+      .filter((player) => player.matchesPlayed > 0 || getTotalPoints(player) !== 0)
+      .sort((a, b) =>
+        getTotalPoints(b) - getTotalPoints(a) ||
+        b.totalGoals - a.totalGoals ||
+        b.totalAssists - a.totalAssists ||
+        b.wins - a.wins ||
+        a.name.localeCompare(b.name)
+      )[0];
+    const finalAwards: SeasonAwards = {
+      ...activeSeason.awards,
+      playerOfTheSeasonId: activeSeason.awards.playerOfTheSeasonId ?? pointsLeader?.id,
+    };
+
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'seasons', activeSeason.id), {
+      name: activeSeason.name,
+      startYear: activeSeason.startYear,
+      endYear: activeSeason.endYear,
+      status: 'completed',
+      awards: finalAwards,
+      createdAt: activeSeason.createdAt,
+      completedAt: serverTimestamp(),
+    }, { merge: true });
+    batch.set(doc(db, 'seasons', parsed.id), {
+      name: parsed.name,
+      startYear: parsed.startYear,
+      endYear: parsed.endYear,
+      status: 'active',
+      awards: { teamOfTheSeasonPlayerIds: [] },
+      createdAt: serverTimestamp(),
+    });
+    await batch.commit();
+    return parsed.id;
+  };
+
+  const updateSeasonAwards: DataContextType['updateSeasonAwards'] = async (seasonId, awards) => {
+    const season = seasons.find((entry) => entry.id === seasonId);
+    if (!season) throw new Error('Season not found');
+    await setDoc(doc(db, 'seasons', seasonId), {
+      name: season.name,
+      startYear: season.startYear,
+      endYear: season.endYear,
+      status: season.status,
+      awards: {
+        playerOfTheSeasonId: awards.playerOfTheSeasonId ?? null,
+        teamOfTheSeasonPlayerIds: awards.teamOfTheSeasonPlayerIds,
+      },
+      createdAt: season.createdAt,
+      ...(season.completedAt ? { completedAt: season.completedAt } : {}),
+    }, { merge: true });
+  };
+
+  const loading = loadingPlayers || loadingMatches || loadingGoals || loadingSeasons;
 
   return (
     <DataContext.Provider
       value={{
+        seasons,
+        activeSeason,
+        allMatches,
+        allGoals,
         players,
         matches,
         goals,
         loading,
+        getPlayersForSeason: buildPlayersForSeason,
+        startNewSeason,
+        updateSeasonAwards,
         addPlayer,
         updatePlayer,
         deletePlayer,

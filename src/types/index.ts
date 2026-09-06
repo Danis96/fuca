@@ -14,7 +14,26 @@ export interface Player {
   losses: number;
   draws: number;
   manualStatsAdjustment?: PlayerStatsLine;
+  seasonStatsAdjustments?: Record<string, PlayerStatsLine>;
   createdAt: Date;
+}
+
+export type SeasonStatus = 'active' | 'completed';
+
+export interface SeasonAwards {
+  playerOfTheSeasonId?: string;
+  teamOfTheSeasonPlayerIds: string[];
+}
+
+export interface Season {
+  id: string;
+  name: string;
+  startYear: number;
+  endYear: number;
+  status: SeasonStatus;
+  awards: SeasonAwards;
+  createdAt: Date;
+  completedAt?: Date;
 }
 
 export type MatchAwardKey = 'scorer' | 'assist' | 'goalkeeper' | 'mvp';
@@ -67,6 +86,7 @@ export interface MatchAwards {
 
 export interface Match {
   id: string;
+  seasonId: string;
   date: Date;
   time: string;
   location: string;

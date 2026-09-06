@@ -26,7 +26,7 @@ export function PlayersScreen({ onSelectPlayer }: PlayersScreenProps) {
       toast.success('Player deleted');
     } catch (err) {
       console.error(err);
-      toast.error('Failed to delete player');
+      toast.error(err instanceof Error ? err.message : 'Failed to delete player');
     }
   };
 
@@ -66,28 +66,28 @@ export function PlayersScreen({ onSelectPlayer }: PlayersScreenProps) {
                 icon: Trophy,
                 label: currentAwardTitles.scorer.title,
                 value: awardCounts.scorer,
-                tone: 'gold',
+                tone: 'gold' as const,
               },
               {
                 key: 'assist',
                 icon: Target,
                 label: currentAwardTitles.assist.title,
                 value: awardCounts.assist,
-                tone: 'blue',
+                tone: 'blue' as const,
               },
               {
                 key: 'goalkeeper',
                 icon: Shield,
                 label: currentAwardTitles.goalkeeper.title,
                 value: awardCounts.goalkeeper,
-                tone: 'cyan',
+                tone: 'cyan' as const,
               },
               {
                 key: 'mvp',
                 icon: Award,
                 label: currentAwardTitles.mvp.title,
                 value: awardCounts.mvp,
-                tone: 'green',
+                tone: 'green' as const,
               },
             ].filter((award) => award.value > 0);
 

@@ -24,11 +24,11 @@ function resolveAwardTitle(key: keyof MatchAwards, title: string | undefined) {
   return trimmed;
 }
 
-function rankEntries<T extends string>(
-  totals: Record<T, number>,
+function rankEntries(
+  totals: Record<string, number>,
   playersById?: Map<string, Pick<Player, 'id' | 'name'>>
 ) {
-  return Object.entries(totals).sort((a, b) => {
+  return (Object.entries(totals) as Array<[string, number]>).sort((a, b) => {
     if (b[1] !== a[1]) return b[1] - a[1];
 
     const aName = playersById?.get(a[0])?.name ?? a[0];
