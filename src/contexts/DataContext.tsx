@@ -137,6 +137,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           totalGoals: data.totalGoals ?? 0,
           totalAssists: data.totalAssists ?? 0,
           totalSaves: data.totalSaves ?? 0,
+          cancellations: data.cancellations ?? 0,
           matchesPlayed: data.matchesPlayed ?? 0,
           wins: data.wins ?? 0,
           losses: data.losses ?? 0,

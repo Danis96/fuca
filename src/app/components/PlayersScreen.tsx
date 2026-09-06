@@ -157,6 +157,12 @@ export function PlayersScreen({ onSelectPlayer }: PlayersScreenProps) {
                       <span className="font-medium text-amber-600">{totalAwards}</span>
                     </div>
                   )}
+                  {player.cancellations > 0 && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Otkazao</span>
+                      <span className="font-medium text-rose-600">{player.cancellations}×</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-3 gap-4 pt-4 border-t border-gray-200">
@@ -223,6 +229,7 @@ export function PlayersScreen({ onSelectPlayer }: PlayersScreenProps) {
                 totalGoals: 0,
                 totalAssists: 0,
                 totalSaves: 0,
+                cancellations: 0,
                 matchesPlayed: 0,
                 wins: 0,
                 losses: 0,
@@ -527,6 +534,19 @@ function PlayerModal({ player, onClose, onSave }: PlayerModalProps) {
                     manualStatsAdjustment: {
                       ...formData.manualStatsAdjustment,
                       totalSaves: value,
+                    },
+                  })
+                }
+              />
+              <StatAdjustmentInput
+                label="Otkazao"
+                value={formData.manualStatsAdjustment.cancellations}
+                onChange={(value) =>
+                  setFormData({
+                    ...formData,
+                    manualStatsAdjustment: {
+                      ...formData.manualStatsAdjustment,
+                      cancellations: Math.max(0, value),
                     },
                   })
                 }

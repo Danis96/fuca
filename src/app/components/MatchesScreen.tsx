@@ -27,6 +27,7 @@ import {
   Pencil,
   ChevronDown,
   Beaker,
+  UserMinus,
 } from 'lucide-react';
 import {
   format,
@@ -52,7 +53,7 @@ import {
   sendTeamAssignmentEmails,
 } from '../../lib/teamNotifications';
 import { DEFAULT_MATCH_AWARDS, getAwardWinners, getResolvedMatchAwards } from '../../lib/matchAwards';
-import { getSavePoints, getSuggestedMvpId } from '../../lib/playerStats';
+import { getSavePoints, getSuggestedMvpId, normalizePlayerStats } from '../../lib/playerStats';
 import { MatchRecapCard } from './MatchRecapCard';
 
 const MATCH_DEV_ENV_STORAGE_KEY = 'fuca.match-dev-env';
@@ -1063,11 +1064,13 @@ function MatchDetailsModal({
   sandboxEnabled,
   sandboxEmailSet,
 }: MatchDetailsModalProps) {
-  const { players, goals, updateMatch, deleteGoal } = useData();
+  const { players, goals, updateMatch, updatePlayer, deleteGoal } = useData();
   const [view, setView] = useState<'details' | 'teams' | 'result' | 'awards' | 'goal'>('details');
   const [sendingInvites, setSendingInvites] = useState(false);
   const [sendingReminder, setSendingReminder] = useState(false);
   const [showReminderDetails, setShowReminderDetails] = useState(false);
+  const [cancellationPlayerId, setCancellationPlayerId] = useState('');
+  const [recordingCancellation, setRecordingCancellation] = useState(false);
 
   const rsvpStatusByPlayer = new Map((match.rsvps ?? []).map((entry) => [entry.playerId, entry.status]));
   const teamAPlayers = players.filter((p) => match.teamA.playerIds.includes(p.id));
@@ -1092,6 +1095,13 @@ function MatchDetailsModal({
     maybe: [],
     out: [],
   };
+  const cancellationCandidates = [...players]
+    .filter((player) => player.status === 'active')
+    .sort((a, b) => {
+      const aOut = rsvpStatusByPlayer.get(a.id) === 'out' ? 1 : 0;
+      const bOut = rsvpStatusByPlayer.get(b.id) === 'out' ? 1 : 0;
+      return bOut - aOut || a.name.localeCompare(b.name);
+    });
   function applySandbox<T extends { email: string }>(recipients: T[]) {
     if (!isSuperAdmin || !sandboxEnabled) return recipients;
     return filterRecipientsForSandbox(recipients, sandboxEmailSet);
@@ -1121,6 +1131,29 @@ function MatchDetailsModal({
     } catch (error) {
       console.error(error);
       toast.error('Failed to remove goal');
+    }
+  };
+
+  const handleRecordCancellation = async () => {
+    const player = players.find((entry) => entry.id === cancellationPlayerId);
+    if (!player || recordingCancellation) return;
+
+    setRecordingCancellation(true);
+    try {
+      const adjustment = normalizePlayerStats(player.manualStatsAdjustment);
+      await updatePlayer(player.id, {
+        manualStatsAdjustment: {
+          ...adjustment,
+          cancellations: adjustment.cancellations + 1,
+        },
+      });
+      toast.success(`${player.name}: Otkazao +1`);
+      setCancellationPlayerId('');
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to record cancellation.');
+    } finally {
+      setRecordingCancellation(false);
     }
   };
 
@@ -1452,6 +1485,40 @@ function MatchDetailsModal({
               <RsvpCountPill label="Maybe" value={rsvpCounts.maybe} accent="text-amber-300" players={rsvpPlayers.maybe} />
               <RsvpCountPill label="Out" value={rsvpCounts.out} accent="text-rose-300" players={rsvpPlayers.out} />
             </div>
+            {isAdmin && (
+              <div className="mt-4 pt-4 border-t border-white/8">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <div className="flex-1">
+                    <label htmlFor={`cancellation-player-${match.id}`} className="text-xs uppercase tracking-wider text-gray-500 font-semibold">
+                      Evidentiraj otkazivanje
+                    </label>
+                    <select
+                      id={`cancellation-player-${match.id}`}
+                      value={cancellationPlayerId}
+                      onChange={(event) => setCancellationPlayerId(event.target.value)}
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white"
+                    >
+                      <option value="">Odaberi igrača…</option>
+                      {cancellationCandidates.map((player) => (
+                        <option key={player.id} value={player.id}>
+                          {rsvpStatusByPlayer.get(player.id) === 'out' ? 'OUT · ' : ''}{player.name} ({player.cancellations})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRecordCancellation}
+                    disabled={!cancellationPlayerId || recordingCancellation}
+                    className="btn-secondary inline-flex items-center justify-center gap-2 px-4 py-2.5 disabled:opacity-50"
+                  >
+                    <UserMinus className="w-4 h-4" />
+                    {recordingCancellation ? 'Saving…' : 'Otkazao +1'}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">OUT igrači su prikazani prvi. Ukupan broj se može ispraviti kroz Edit Player.</p>
+              </div>
+            )}
           </div>
         )}
 

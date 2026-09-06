@@ -36,6 +36,7 @@ function rankPlayers(players: Player[]) {
       player.totalGoals > 0 ||
       player.totalAssists > 0 ||
       player.totalSaves > 0 ||
+      player.cancellations > 0 ||
       getTotalPoints(player) !== 0
     )
     .sort((a, b) =>
@@ -286,7 +287,7 @@ export function SeasonsScreen({ onSelectPlayer }: SeasonsScreenProps) {
                     type="button"
                     key={player.id}
                     onClick={() => onSelectPlayer?.(player.id, selectedSeason.id)}
-                    className="w-full grid grid-cols-[40px_minmax(130px,1fr)_56px] sm:grid-cols-[48px_minmax(150px,1fr)_repeat(5,minmax(48px,72px))] items-center gap-2 px-4 sm:px-5 py-4 text-left hover:bg-white/[0.025] transition-colors"
+                    className="w-full grid grid-cols-[40px_minmax(130px,1fr)_56px] sm:grid-cols-[48px_minmax(150px,1fr)_repeat(6,minmax(44px,68px))] items-center gap-2 px-4 sm:px-5 py-4 text-left hover:bg-white/[0.025] transition-colors"
                   >
                     <Rank rank={index + 1} />
                     <div className="flex items-center gap-3 min-w-0">
@@ -301,6 +302,7 @@ export function SeasonsScreen({ onSelectPlayer }: SeasonsScreenProps) {
                     <div className="hidden sm:block"><StandingValue label="A" value={player.totalAssists} /></div>
                     <div className="hidden sm:block"><StandingValue label="MP" value={player.matchesPlayed} /></div>
                     <div className="hidden sm:block"><StandingValue label="W" value={player.wins} /></div>
+                    <div className="hidden sm:block"><StandingValue label="OTK" value={player.cancellations} /></div>
                   </button>
                 ))}
               </div>

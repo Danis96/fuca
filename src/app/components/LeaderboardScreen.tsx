@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'motion/react';
 import { useData } from '../../contexts/DataContext';
-import { Trophy, Target, TrendingUp, Award, Medal, Shield } from 'lucide-react';
+import { Trophy, Target, TrendingUp, Award, Medal, Shield, UserMinus } from 'lucide-react';
 import { getPlayerAwardCounts } from '../../lib/matchAwards';
 import { getSavePoints, getTotalPoints } from '../../lib/playerStats';
 
@@ -11,6 +11,7 @@ type LeaderboardTab =
   | 'saves'
   | 'total'
   | 'matches'
+  | 'cancellations'
   | 'awardScorer'
   | 'awardAssist'
   | 'awardGoalkeeper'
@@ -37,6 +38,8 @@ export function LeaderboardScreen({ onSelectPlayer }: LeaderboardScreenProps) {
         return b.totalSaves - a.totalSaves;
       case 'matches':
         return b.matchesPlayed - a.matchesPlayed;
+      case 'cancellations':
+        return b.cancellations - a.cancellations;
       case 'awardScorer':
         return awardB.scorer - awardA.scorer;
       case 'awardAssist':
@@ -56,6 +59,7 @@ export function LeaderboardScreen({ onSelectPlayer }: LeaderboardScreenProps) {
     { id: 'assists' as LeaderboardTab, label: 'Assists', icon: Target },
     { id: 'saves' as LeaderboardTab, label: 'Saves', icon: TrendingUp },
     { id: 'matches' as LeaderboardTab, label: 'Matches', icon: TrendingUp },
+    { id: 'cancellations' as LeaderboardTab, label: 'Otkazao', icon: UserMinus },
     { id: 'awardScorer' as LeaderboardTab, label: 'Baller Awards', icon: Trophy },
     { id: 'awardAssist' as LeaderboardTab, label: 'Wizard Awards', icon: Target },
     { id: 'awardGoalkeeper' as LeaderboardTab, label: 'Brick Wall Awards', icon: Shield },
@@ -144,6 +148,8 @@ export function LeaderboardScreen({ onSelectPlayer }: LeaderboardScreenProps) {
                       ? player.totalSaves
                       : activeTab === 'matches'
                       ? player.matchesPlayed
+                      : activeTab === 'cancellations'
+                      ? player.cancellations
                       : activeTab === 'awardScorer'
                       ? getPlayerAwardCounts(matches, player.id).scorer
                       : activeTab === 'awardAssist'
@@ -249,6 +255,8 @@ export function LeaderboardScreen({ onSelectPlayer }: LeaderboardScreenProps) {
                             ? 'pts'
                             : activeTab === 'matches'
                             ? 'played'
+                            : activeTab === 'cancellations'
+                            ? 'times'
                             : activeTab.startsWith('award')
                             ? 'wins'
                             : activeTab}

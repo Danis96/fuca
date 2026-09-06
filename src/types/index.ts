@@ -9,6 +9,7 @@ export interface Player {
   totalGoals: number;
   totalAssists: number;
   totalSaves: number;
+  cancellations: number;
   matchesPlayed: number;
   wins: number;
   losses: number;
@@ -147,6 +148,7 @@ export interface PlayerStatsLine {
   totalGoals: number;
   totalAssists: number;
   totalSaves: number;
+  cancellations: number;
   matchesPlayed: number;
   wins: number;
   losses: number;

@@ -1,6 +1,6 @@
 import { useData } from '../../contexts/DataContext';
 import { PlayerStatsLine } from '../../types';
-import { ArrowLeft, Trophy, Target, TrendingUp, Award, Calendar, User, Flame, Medal } from 'lucide-react';
+import { ArrowLeft, Trophy, Target, TrendingUp, Award, Calendar, User, Flame, Medal, UserMinus } from 'lucide-react';
 import { format } from 'date-fns';
 import { getPlayerAwardCounts } from '../../lib/matchAwards';
 import { getSavePoints, getTotalPoints } from '../../lib/playerStats';
@@ -61,6 +61,7 @@ export function PlayerProfileScreen({ playerId, seasonId, onBack }: PlayerProfil
     { label: 'Total Points', value: getTotalPoints(player), icon: Award, color: 'bg-green-500' },
     { label: 'G+A per Match', value: goalContributionPerMatch, icon: TrendingUp, color: 'bg-purple-500' },
     { label: 'Weekly Awards', value: totalWeeklyAwards, icon: Medal, color: 'bg-amber-500' },
+    { label: 'Otkazao', value: player.cancellations, icon: UserMinus, color: 'bg-rose-500' },
   ];
 
   const record = [
@@ -197,6 +198,7 @@ export function PlayerProfileScreen({ playerId, seasonId, onBack }: PlayerProfil
             <AdjustmentPill label="Goals" value={manualStatsAdjustment?.totalGoals ?? 0} />
             <AdjustmentPill label="Assists" value={manualStatsAdjustment?.totalAssists ?? 0} />
             <AdjustmentPill label="Saves" value={manualStatsAdjustment?.totalSaves ?? 0} />
+            <AdjustmentPill label="Otkazao" value={manualStatsAdjustment?.cancellations ?? 0} />
             <AdjustmentPill label="Apps" value={manualStatsAdjustment?.matchesPlayed ?? 0} />
             <AdjustmentPill label="Wins" value={manualStatsAdjustment?.wins ?? 0} />
             <AdjustmentPill label="Draws" value={manualStatsAdjustment?.draws ?? 0} />
