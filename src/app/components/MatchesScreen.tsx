@@ -1247,6 +1247,10 @@ function MatchDetailsModal({
   };
 
   const handlePostGameImageUpload = async (file: File) => {
+    if (!isAdmin) {
+      toast.error('Only admins can upload match photos.');
+      return;
+    }
     if (!file.type.startsWith('image/')) {
       toast.error('Please select an image file.');
       return;
@@ -1270,6 +1274,10 @@ function MatchDetailsModal({
   };
 
   const handlePostGameImageRemove = async () => {
+    if (!isAdmin) {
+      toast.error('Only admins can remove match photos.');
+      return;
+    }
     try {
       await updateMatch(match.id, { postGameImage: '' });
       toast.success('Post game photo removed.');

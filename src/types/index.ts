@@ -33,6 +33,8 @@ export interface Season {
   endYear: number;
   status: SeasonStatus;
   awards: SeasonAwards;
+  /** ImageKit URL for the single season podium photo showing the top three places. */
+  podiumImage?: string;
   createdAt: Date;
   completedAt?: Date;
 }

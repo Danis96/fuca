@@ -1,9 +1,17 @@
+import { auth } from './firebase';
+
 const PUBLIC_KEY = import.meta.env.VITE_IMAGEKIT_PUBLIC_KEY as string;
 
 export async function uploadToImageKit(file: File, folder = 'avatars'): Promise<string> {
   if (!PUBLIC_KEY) throw new Error('VITE_IMAGEKIT_PUBLIC_KEY is not set');
 
-  const authRes = await fetch('/api/imagekit-auth');
+  const user = auth.currentUser;
+  if (!user) throw new Error('You must be signed in to upload an image');
+  const idToken = await user.getIdToken();
+
+  const authRes = await fetch('/api/imagekit-auth', {
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
   if (!authRes.ok) throw new Error('Failed to get ImageKit auth signature');
   const { token, expire, signature } = (await authRes.json()) as {
     token: string;

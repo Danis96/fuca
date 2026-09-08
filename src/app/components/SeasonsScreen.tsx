@@ -1,25 +1,29 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   Award,
+  Calendar,
   CalendarDays,
   Check,
   ChevronRight,
   Crown,
   Medal,
+  MapPin,
   Plus,
   ShieldCheck,
   Sparkles,
   Target,
   Trophy,
+  Upload,
   Users,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
-import { Player, Season } from '../../types';
+import { Match, Player, Season } from '../../types';
 import { getTotalPoints } from '../../lib/playerStats';
+import { uploadToImageKit } from '../../lib/imagekit';
 
 interface SeasonsScreenProps {
   onSelectPlayer?: (id: string, seasonId: string) => void;
@@ -58,10 +62,12 @@ export function SeasonsScreen({ onSelectPlayer }: SeasonsScreenProps) {
     getPlayersForSeason,
     startNewSeason,
     updateSeasonAwards,
+    updateSeasonPodiumImage,
   } = useData();
   const [selectedSeasonId, setSelectedSeasonId] = useState(activeSeason.id);
   const [pendingSeasonId, setPendingSeasonId] = useState<string | null>(null);
   const [showStartModal, setShowStartModal] = useState(false);
+  const [showSeasonMatches, setShowSeasonMatches] = useState(false);
 
   useEffect(() => {
     if (pendingSeasonId) {
@@ -170,13 +176,34 @@ export function SeasonsScreen({ onSelectPlayer }: SeasonsScreenProps) {
                     : 'Final record from the completed season.'}
                 </p>
               </div>
-              <div className="grid grid-cols-3 gap-3">
-                <SeasonStat icon={CalendarDays} value={completedMatches.length} label="Matches" />
-                <SeasonStat icon={Target} value={seasonGoals.length} label="Goals" />
-                <SeasonStat icon={Users} value={standings.length} label="Players" />
+              <div>
+                <div className="grid grid-cols-3 gap-3">
+                  <SeasonStat
+                    icon={CalendarDays}
+                    value={seasonMatches.length}
+                    label="Matches"
+                    onClick={() => setShowSeasonMatches(true)}
+                  />
+                  <SeasonStat icon={Target} value={seasonGoals.length} label="Goals" />
+                  <SeasonStat icon={Users} value={standings.length} label="Players" />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowSeasonMatches(true)}
+                  className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-emerald-300 transition-colors hover:bg-emerald-400/10"
+                >
+                  View all matches & results
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
               </div>
             </div>
           </div>
+
+          <SeasonPodiumPhoto
+            season={selectedSeason}
+            isAdmin={isAdmin}
+            onUpdate={updateSeasonPodiumImage}
+          />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div className="panel p-5">
@@ -317,6 +344,13 @@ export function SeasonsScreen({ onSelectPlayer }: SeasonsScreenProps) {
       </div>
 
       <AnimatePresence>
+        {showSeasonMatches && (
+          <SeasonMatchesModal
+            season={selectedSeason}
+            matches={seasonMatches}
+            onClose={() => setShowSeasonMatches(false)}
+          />
+        )}
         {showStartModal && (
           <StartSeasonModal
             suggestedName={getNextSeasonName(activeSeason)}
@@ -337,14 +371,250 @@ export function SeasonsScreen({ onSelectPlayer }: SeasonsScreenProps) {
   );
 }
 
-function SeasonStat({ icon: Icon, value, label }: { icon: typeof Trophy; value: number; label: string }) {
-  return (
-    <div className="rounded-xl border border-white/8 bg-black/15 px-3 py-2 text-center min-w-[72px]">
+function SeasonStat({ icon: Icon, value, label, onClick }: { icon: typeof Trophy; value: number; label: string; onClick?: () => void }) {
+  const className = `rounded-xl border border-white/8 bg-black/15 px-3 py-2 text-center min-w-[72px] ${
+    onClick ? 'cursor-pointer transition-colors hover:border-emerald-300/35 hover:bg-emerald-400/10' : ''
+  }`;
+  const content = (
+    <>
       <Icon className="w-4 h-4 text-emerald-300 mx-auto mb-1" />
       <p className="text-lg font-bold leading-none">{value}</p>
       <p className="text-[10px] uppercase tracking-wider text-gray-500 mt-1">{label}</p>
-    </div>
+    </>
   );
+  return onClick ? (
+    <button type="button" onClick={onClick} className={className} title="View all matches and results">
+      {content}
+    </button>
+  ) : <div className={className}>{content}</div>;
+}
+
+function SeasonPodiumPhoto({
+  season,
+  isAdmin,
+  onUpdate,
+}: {
+  season: Season;
+  isAdmin: boolean;
+  onUpdate: (seasonId: string, imageUrl?: string) => Promise<void>;
+}) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  const uploadPhoto = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Podium photo must be under 10MB.');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const imageUrl = await uploadToImageKit(file, 'season-podium');
+      await onUpdate(season.id, imageUrl);
+      toast.success('Season podium photo uploaded.');
+    } catch (error) {
+      console.error(error);
+      toast.error(error instanceof Error ? error.message : 'Could not upload the podium photo.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removePhoto = async () => {
+    try {
+      await onUpdate(season.id);
+      setPreviewOpen(false);
+      toast.success('Season podium photo removed.');
+    } catch (error) {
+      console.error(error);
+      toast.error('Could not remove the podium photo.');
+    }
+  };
+
+  return (
+    <>
+      <div className="panel overflow-hidden">
+        <div className="flex flex-col gap-3 border-b border-white/8 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-400/15 text-amber-300">
+              <Medal className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold">Season podium</h2>
+              <p className="text-sm text-gray-500">One photo featuring the season's top three places.</p>
+            </div>
+          </div>
+
+          {isAdmin && (
+            <div className="flex gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void uploadPhoto(file);
+                  event.target.value = '';
+                }}
+              />
+              {season.podiumImage && (
+                <button
+                  type="button"
+                  onClick={() => void removePhoto()}
+                  disabled={uploading}
+                  className="btn-danger-soft inline-flex items-center gap-2 px-3 disabled:opacity-50"
+                >
+                  <X className="h-4 w-4" />
+                  Remove
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="btn-primary inline-flex items-center gap-2 px-4 py-2.5 disabled:opacity-50"
+              >
+                <Upload className="h-4 w-4" />
+                {uploading ? 'Uploading…' : season.podiumImage ? 'Replace photo' : 'Upload photo'}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {season.podiumImage ? (
+          <button
+            type="button"
+            onClick={() => setPreviewOpen(true)}
+            className="group relative block w-full overflow-hidden bg-black/25 text-left"
+            title="Open podium photo"
+          >
+            <img
+              src={season.podiumImage}
+              alt={`Top three places for season ${season.name}`}
+              className="max-h-[34rem] w-full object-contain transition-transform duration-300 group-hover:scale-[1.01]"
+            />
+            <span className="absolute bottom-4 right-4 rounded-full border border-white/15 bg-black/65 px-3 py-1.5 text-xs text-white/80 backdrop-blur">
+              View full photo
+            </span>
+          </button>
+        ) : (
+          <div className="flex min-h-44 flex-col items-center justify-center px-5 py-10 text-center">
+            <Medal className="mb-3 h-8 w-8 text-gray-600" />
+            <p className="font-medium text-gray-400">No podium photo yet</p>
+            <p className="mt-1 text-sm text-gray-600">
+              {isAdmin ? 'Upload one photo showing first, second and third place.' : 'The top-three photo will appear here.'}
+            </p>
+          </div>
+        )}
+      </div>
+
+      <AnimatePresence>
+        {previewOpen && season.podiumImage && (
+          <motion.div
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onMouseDown={(event) => event.target === event.currentTarget && setPreviewOpen(false)}
+          >
+            <button type="button" onClick={() => setPreviewOpen(false)} className="icon-action absolute right-5 top-5">
+              <X className="h-5 w-5" />
+            </button>
+            <img
+              src={season.podiumImage}
+              alt={`Top three places for season ${season.name}`}
+              className="max-h-[90vh] max-w-[94vw] rounded-2xl object-contain shadow-2xl"
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
+  );
+}
+
+function SeasonMatchesModal({ season, matches, onClose }: { season: Season; matches: Match[]; onClose: () => void }) {
+  const sortedMatches = [...matches].sort((a, b) => b.date.getTime() - a.date.getTime());
+
+  return (
+    <ModalShell onClose={onClose}>
+      <div className="mb-5 flex items-start justify-between gap-3">
+        <div>
+          <div className="pill mb-3"><CalendarDays className="h-3 w-3" /> Season {season.name}</div>
+          <h3 className="text-2xl font-bold">All matches & results</h3>
+          <p className="mt-1 text-sm text-gray-500">{matches.length} fixtures recorded in this season.</p>
+        </div>
+        <CloseButton onClick={onClose} />
+      </div>
+
+      {sortedMatches.length > 0 ? (
+        <div className="max-h-[65vh] space-y-3 overflow-y-auto pr-1">
+          {sortedMatches.map((match) => {
+            const completed = match.status === 'completed';
+            const cancelled = match.status === 'cancelled';
+            return (
+              <div key={match.id} className="rounded-2xl border border-white/8 bg-white/[0.025] p-4">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-sm text-gray-400">
+                    <Calendar className="h-4 w-4 text-emerald-300" />
+                    <span>{formatSeasonMatchDate(match.date)}</span>
+                    {match.time && <span className="text-gray-600">· {match.time}</span>}
+                  </div>
+                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
+                    completed
+                      ? 'bg-emerald-400/10 text-emerald-300'
+                      : cancelled
+                        ? 'bg-rose-400/10 text-rose-300'
+                        : 'bg-blue-400/10 text-blue-300'
+                  }`}>
+                    {completed ? 'Full time' : match.status}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3">
+                  <p className="truncate text-right font-semibold">{match.teamA.name || 'Team A'}</p>
+                  <div className="min-w-20 rounded-xl border border-white/8 bg-black/25 px-3 py-2 text-center">
+                    {completed ? (
+                      <span className="text-xl font-black text-white">{match.teamA.score ?? 0} – {match.teamB.score ?? 0}</span>
+                    ) : (
+                      <span className="text-sm font-bold text-gray-500">VS</span>
+                    )}
+                  </div>
+                  <p className="truncate font-semibold">{match.teamB.name || 'Team B'}</p>
+                </div>
+
+                {match.location && (
+                  <div className="mt-3 flex items-center justify-center gap-1.5 text-xs text-gray-500">
+                    <MapPin className="h-3.5 w-3.5" />
+                    {match.location}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-dashed border-white/10 px-5 py-12 text-center">
+          <CalendarDays className="mx-auto mb-3 h-8 w-8 text-gray-600" />
+          <p className="text-gray-500">No matches have been added to this season.</p>
+        </div>
+      )}
+    </ModalShell>
+  );
+}
+
+function formatSeasonMatchDate(date: Date) {
+  return new Intl.DateTimeFormat('en', {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).format(date);
 }
 
 function PlayerAvatar({ player, size = 'md' }: { player: Player; size?: 'sm' | 'md' | 'lg' }) {

@@ -35,6 +35,7 @@ interface DataContextType {
   getPlayersForSeason: (seasonId: string) => Player[];
   startNewSeason: (name: string) => Promise<string>;
   updateSeasonAwards: (seasonId: string, awards: SeasonAwards) => Promise<void>;
+  updateSeasonPodiumImage: (seasonId: string, imageUrl?: string) => Promise<void>;
 
   addPlayer: (data: Omit<Player, 'id' | 'createdAt'>) => Promise<string>;
   updatePlayer: (id: string, data: Partial<Player>) => Promise<void>;
@@ -176,6 +177,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
                 ? data.awards.teamOfTheSeasonPlayerIds
                 : [],
             },
+            podiumImage: typeof data.podiumImage === 'string' && data.podiumImage.trim()
+              ? data.podiumImage.trim()
+              : undefined,
             createdAt: toDate(data.createdAt),
             completedAt: data.completedAt ? toDate(data.completedAt) : undefined,
           };
@@ -540,6 +544,24 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }, { merge: true });
   };
 
+  const updateSeasonPodiumImage: DataContextType['updateSeasonPodiumImage'] = async (seasonId, imageUrl) => {
+    const season = seasons.find((entry) => entry.id === seasonId);
+    if (!season) throw new Error('Season not found');
+    await setDoc(doc(db, 'seasons', seasonId), {
+      name: season.name,
+      startYear: season.startYear,
+      endYear: season.endYear,
+      status: season.status,
+      podiumImage: imageUrl?.trim() || null,
+      awards: {
+        playerOfTheSeasonId: season.awards.playerOfTheSeasonId ?? null,
+        teamOfTheSeasonPlayerIds: season.awards.teamOfTheSeasonPlayerIds,
+      },
+      createdAt: season.createdAt,
+      ...(season.completedAt ? { completedAt: season.completedAt } : {}),
+    }, { merge: true });
+  };
+
   const loading = loadingPlayers || loadingMatches || loadingGoals || loadingSeasons;
 
   return (
@@ -556,6 +578,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         getPlayersForSeason: buildPlayersForSeason,
         startNewSeason,
         updateSeasonAwards,
+        updateSeasonPodiumImage,
         addPlayer,
         updatePlayer,
         deletePlayer,
