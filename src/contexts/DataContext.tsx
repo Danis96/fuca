@@ -203,6 +203,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           time: data.time ?? '',
           location: data.location ?? '',
           notes: data.notes ?? '',
+          postGameImage: typeof data.postGameImage === 'string' && data.postGameImage.trim()
+            ? data.postGameImage.trim()
+            : undefined,
           status: data.status ?? 'scheduled',
           kickoffAtIso: data.kickoffAtIso ?? undefined,
           eventTimeZone: data.eventTimeZone ?? undefined,

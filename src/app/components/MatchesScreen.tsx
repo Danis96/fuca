@@ -28,6 +28,8 @@ import {
   ChevronDown,
   Beaker,
   UserMinus,
+  Camera,
+  Upload,
 } from 'lucide-react';
 import {
   format,
@@ -55,6 +57,9 @@ import {
 import { DEFAULT_MATCH_AWARDS, getAwardWinners, getResolvedMatchAwards } from '../../lib/matchAwards';
 import { getSavePoints, getSuggestedMvpId, normalizePlayerStats } from '../../lib/playerStats';
 import { MatchRecapCard } from './MatchRecapCard';
+import { PostGamePhoto } from './PostGamePhoto';
+import { resolvePostGamePhotoPath } from '../../lib/postGamePhotos';
+import { uploadToImageKit } from '../../lib/imagekit';
 
 const MATCH_DEV_ENV_STORAGE_KEY = 'fuca.match-dev-env';
 
@@ -179,6 +184,16 @@ export function MatchesScreen() {
   useEffect(() => {
     saveDevEmailSandboxState(devEmailSandbox);
   }, [devEmailSandbox]);
+
+  useEffect(() => {
+    if (!selectedMatch) return;
+    const latestMatch = matches.find((match) => match.id === selectedMatch.id);
+    if (!latestMatch) {
+      setSelectedMatch(null);
+    } else if (latestMatch !== selectedMatch) {
+      setSelectedMatch(latestMatch);
+    }
+  }, [matches, selectedMatch?.id]);
 
   function getSandboxedRecipients<T extends { email: string }>(recipients: T[]) {
     if (!isSuperAdmin || !devEmailSandbox.enabled) return recipients;
@@ -580,6 +595,14 @@ function MatchCard({ match, onClick, isAdmin, onDelete, delay = 0 }: MatchCardPr
           <span className="team-stripe" aria-hidden />
         </div>
       </div>
+
+      {isCompleted && (
+        <PostGamePhoto
+          src={resolvePostGamePhotoPath(match)}
+          alt={`Post game photo from ${format(match.date, 'MMMM dd, yyyy')}`}
+          compact
+        />
+      )}
     </motion.div>
   );
 }
@@ -1071,6 +1094,8 @@ function MatchDetailsModal({
   const [showReminderDetails, setShowReminderDetails] = useState(false);
   const [cancellationPlayerId, setCancellationPlayerId] = useState('');
   const [recordingCancellation, setRecordingCancellation] = useState(false);
+  const [uploadingPostGameImage, setUploadingPostGameImage] = useState(false);
+  const postGameFileInputRef = useRef<HTMLInputElement>(null);
 
   const rsvpStatusByPlayer = new Map((match.rsvps ?? []).map((entry) => [entry.playerId, entry.status]));
   const teamAPlayers = players.filter((p) => match.teamA.playerIds.includes(p.id));
@@ -1218,6 +1243,39 @@ function MatchDetailsModal({
       toast.error(error instanceof Error ? error.message : 'Failed to send reminders');
     } finally {
       setSendingReminder(false);
+    }
+  };
+
+  const handlePostGameImageUpload = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Post game photo must be under 10MB.');
+      return;
+    }
+
+    setUploadingPostGameImage(true);
+    try {
+      const imageUrl = await uploadToImageKit(file, 'post-game');
+      await updateMatch(match.id, { postGameImage: imageUrl });
+      toast.success('Post game photo uploaded.');
+    } catch (error) {
+      console.error(error);
+      toast.error(error instanceof Error ? error.message : 'Failed to upload the post game photo.');
+    } finally {
+      setUploadingPostGameImage(false);
+    }
+  };
+
+  const handlePostGameImageRemove = async () => {
+    try {
+      await updateMatch(match.id, { postGameImage: '' });
+      toast.success('Post game photo removed.');
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to remove the post game photo.');
     }
   };
 
@@ -1542,6 +1600,72 @@ function MatchDetailsModal({
             </span>
           </div>
         </div>
+
+        {isCompleted && (
+          <section className="rounded-2xl border border-white/5 bg-white/[0.02] p-4 sm:p-5">
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="mb-2 inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.24em] text-emerald-300">
+                  <Camera className="h-3.5 w-3.5" />
+                  Full time memory
+                </div>
+                <h3 className="text-lg font-bold">POST GAME Pic</h3>
+                <p className="mt-1 text-sm text-gray-500">Open the team photo in a larger, distraction-free view.</p>
+              </div>
+            </div>
+
+            <PostGamePhoto
+              src={resolvePostGamePhotoPath(match)}
+              alt={`Post game photo from ${format(match.date, 'MMMM dd, yyyy')}`}
+            />
+
+            {isAdmin && (
+              <div className="mt-4 rounded-xl border border-white/8 bg-black/20 p-4">
+                <input
+                  ref={postGameFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void handlePostGameImageUpload(file);
+                    event.target.value = '';
+                  }}
+                />
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-white">Match photo</p>
+                    <p className="mt-0.5 text-xs text-gray-500">
+                      JPG, PNG or WebP up to 10MB. Stored in the ImageKit post-game folder.
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    {match.postGameImage && (
+                      <button
+                        type="button"
+                        onClick={handlePostGameImageRemove}
+                        disabled={uploadingPostGameImage}
+                        className="btn-danger-soft inline-flex min-h-10 items-center justify-center gap-2 px-4 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <X className="h-4 w-4" />
+                        Remove
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => postGameFileInputRef.current?.click()}
+                      disabled={uploadingPostGameImage}
+                      className="btn-primary inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap px-4 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Upload className="h-4 w-4" />
+                      {uploadingPostGameImage ? 'Uploading…' : match.postGameImage ? 'Replace photo' : 'Upload photo'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
 
         <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
           <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">

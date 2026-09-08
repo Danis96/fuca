@@ -92,6 +92,8 @@ export interface Match {
   time: string;
   location: string;
   notes?: string;
+  /** ImageKit URL (or local public-asset fallback) for a completed match photo. */
+  postGameImage?: string;
   status: 'scheduled' | 'completed' | 'cancelled';
   kickoffAtIso?: string;
   eventTimeZone?: string;
